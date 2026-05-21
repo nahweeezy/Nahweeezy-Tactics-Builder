@@ -1,6 +1,10 @@
 # Nahweeezy's Tactics Board
 
-A browser-based tactical sandbox: draw a formation, snapshot four phases of build-up, hit play to watch the shape transition, drop real Premier League players onto the board (live FPL data + headshots), and publish your tactic to a community feed for other coaches to browse.
+A browser-based tactical sandbox that allows visualization + animation of tactical football nuance - things such as in/out of possession setups, transitions, etc. 
+
+This was intended to be used in conjunction with my YT page _Nahweeezy_, but I think it has a lot of potential as a product entirely. 
+
+There's a couple other QOL features as well, such as importing Premier League players (need to find an expansive database/API of players in order to expand)
 
 ## Stack
 
