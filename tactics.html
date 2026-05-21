@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nahweeezy's Tactics Board</title>
+    <meta name="description" content="A creative tactical sandbox — dual possession shapes, phase animations, drawing tools, ad boards & a Premier League player picker.">
+
+    <!-- Custom typography (Google Fonts for fallback + Uni Sans local) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <!-- Google Analytics 4 -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=%VITE_GA_MEASUREMENT_ID%"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', '%VITE_GA_MEASUREMENT_ID%');
+    </script>
+
+    <style>
+        #boot {
+            position: fixed; inset: 0;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background:
+              radial-gradient(800px 500px at 30% 30%, rgba(59,130,246,0.12), transparent 60%),
+              radial-gradient(900px 600px at 70% 70%, rgba(244,63,94,0.06), transparent 60%),
+              #060912;
+            color: #e7ebf2;
+            z-index: 9999;
+            transition: opacity 0.4s;
+            font-family: system-ui, sans-serif;
+        }
+        #boot.hidden { opacity: 0; pointer-events: none; }
+        #boot .brand {
+          font-family: 'Bebas Neue', sans-serif;
+          font-size: 4rem;
+          letter-spacing: 0.06em;
+          color: white;
+          text-shadow: 0 0 40px rgba(59,130,246,0.4);
+          margin-bottom: 18px;
+          text-align: center;
+          line-height: 0.9;
+          font-weight: 800;
+        }
+        #boot .brand span { color: #60a5fa; }
+        #boot .ring {
+            width: 36px; height: 36px;
+            border: 3px solid rgba(255,255,255,0.10);
+            border-top-color: #60a5fa;
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #boot .label {
+            font-family: 'Oswald', sans-serif;
+            margin-top: 14px;
+            font-size: 0.78rem;
+            color: #6b7280;
+            font-weight: 700;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div id="boot">
+        <div class="brand">NAHWEEEZY'S<br><span>TACTICS BOARD</span></div>
+        <div class="ring"></div>
+        <div class="label" id="boot-label">Initialising coaching board…</div>
+        <div id="boot-help" style="
+            display:none; max-width:480px; text-align:left; margin-top:24px;
+            font-family:'JetBrains Mono', monospace; font-size:12px;
+            color:#fda4af; padding:14px 18px;
+            background:rgba(244,63,94,0.10); border:1px solid rgba(244,63,94,0.35);
+            border-radius:6px; line-height:1.6;">
+          <strong style="font-family:'Oswald',sans-serif; letter-spacing:2px; font-size:11px; color:#fff;">⚠ DEV SERVER NOT RESPONDING</strong><br>
+          The React bundle isn't loading. Most likely the Vite dev server isn't running.
+          <br><br>
+          From the project root, run:
+          <pre style="background:#000; padding:8px 12px; margin:8px 0; border-radius:4px; color:#a3e635;">npm install
+npm run dev</pre>
+          Then visit <code style="color:#60a5fa;">http://localhost:5173/tactics.html</code>
+        </div>
+    </div>
+
+    <div id="root"></div>
+
+    <script>
+      // If Vite isn't running, the module script silently 404s and the boot
+      // stays forever. Surface a helpful message after 6 seconds.
+      window.__bootFallback__ = setTimeout(function () {
+        if (!document.getElementById('root').firstChild) {
+          var lbl = document.getElementById('boot-label');
+          var help = document.getElementById('boot-help');
+          if (lbl) lbl.textContent = 'Bundle not loaded';
+          if (help) help.style.display = 'block';
+          var ring = document.querySelector('#boot .ring');
+          if (ring) ring.style.animationPlayState = 'paused';
+        }
+      }, 6000);
+      window.addEventListener('error', function (e) {
+        var help = document.getElementById('boot-help');
+        if (help && !document.getElementById('root').firstChild) {
+          help.style.display = 'block';
+          help.insertAdjacentHTML('beforeend',
+            '<br><strong style="color:#fff;">Error:</strong> ' +
+            (e.message || e.error || 'unknown'));
+        }
+      });
+    </script>
+
+    <script type="module" src="/src/tactics/main.jsx"></script>
+</body>
+</html>

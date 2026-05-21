@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Local Uni Sans family (FFF licensed — see public/assets/legal/) ── */
+@font-face {
+  font-family: 'Uni Sans Heavy';
+  src: url('/assets/fonts/Uni%20Sans%20Heavy.otf') format('opentype');
+  font-weight: 800; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Uni Sans Heavy';
+  src: url('/assets/fonts/Uni%20Sans%20Heavy%20Italic.otf') format('opentype');
+  font-weight: 800; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: 'Uni Sans Thin';
+  src: url('/assets/fonts/Uni%20Sans%20Thin.otf') format('opentype');
+  font-weight: 200; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Uni Sans Thin';
+  src: url('/assets/fonts/Uni%20Sans%20Thin%20Italic.otf') format('opentype');
+  font-weight: 200; font-style: italic; font-display: swap;
+}
+
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #060912;
+  overscroll-behavior: none;
+}
+svg { -webkit-tap-highlight-color: transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #0a0e14; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(96,165,250,0.35); }
+::selection { background: rgba(59,130,246,0.35); }
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(59,130,246,0.3); }
+  50%      { box-shadow: 0 0 35px rgba(59,130,246,0.5); }
+}
+.pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+
+@keyframes shimmer {
+  0% { background-position: -100% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer-text {
+  background: linear-gradient(90deg, rgba(255,255,255,0.6) 0%, #60a5fa 50%, rgba(255,255,255,0.6) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 3s linear infinite;
+}
+
+.pitch-clip {
+  clip-path: polygon(
+    14px 0, calc(100% - 14px) 0,
+    100% 14px, 100% calc(100% - 14px),
+    calc(100% - 14px) 100%, 14px 100%,
+    0 calc(100% - 14px), 0 14px
+  );
+}
+
+.corner-tape { position: relative; }
+.corner-tape::before {
+  content: '';
+  position: absolute;
+  top: -1px; right: -1px;
+  width: 18px; height: 18px;
+  background: linear-gradient(135deg, transparent 50%, #60a5fa 50%);
+}

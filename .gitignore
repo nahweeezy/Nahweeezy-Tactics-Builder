@@ -1,0 +1,18 @@
+# Local environment
+.env
+.env.local
+.vercel
+.DS_Store
+*.log
+
+# Build artifacts & caches
+node_modules
+dist
+.vite
+
+# Per-machine Claude Code preferences (paths, allowlist) — keep launch.json tracked, exclude local user settings.
+.claude/settings.local.json
+
+# Large 3D model — convert to .glb and re-add (~10–20 MB) before pushing to GitHub
+public/assets/models/stadium.dae
+public/assets/models/textures/

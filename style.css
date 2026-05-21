@@ -1,0 +1,520 @@
+/* ──────────────────────────────────────────────
+   Nahweeezy's Tactics Board — landing page styles
+   ────────────────────────────────────────────── */
+
+:root {
+    --bg:        #0a0e14;
+    --bg-2:      #0e1722;
+    --panel:     #0f1822;
+    --panel-2:   #142030;
+    --border:    rgba(255,255,255,0.08);
+    --border-2:  rgba(255,255,255,0.16);
+    --text:      #e7ebf2;
+    --text-mute: #8590a3;
+    --teal:      #1ed7a3;
+    --teal-2:    #15a87f;
+    --teal-soft: rgba(30,215,163,0.14);
+    --red:       #ff5b5b;
+    --orange:    #ff9b3d;
+    --blue:      #4aa3ff;
+    --purple:    #c773ff;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; }
+
+/* ── Nav ─────────────────────────────────────── */
+.lp-nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    background: rgba(10,14,20,0.78);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+}
+
+.lp-logo {
+    font-weight: 800;
+    font-size: 1.05rem;
+    letter-spacing: 0.5px;
+    color: var(--text);
+}
+.lp-logo span {
+    color: var(--teal);
+    font-weight: 600;
+}
+
+.lp-nav-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px;
+    background: var(--teal-soft);
+    border: 1px solid rgba(30,215,163,0.4);
+    border-radius: 8px;
+    color: var(--teal);
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: background 0.18s, border-color 0.18s;
+}
+.lp-nav-cta:hover {
+    background: rgba(30,215,163,0.22);
+    border-color: var(--teal);
+}
+
+/* ── Hero ────────────────────────────────────── */
+.lp-hero {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 120px 24px 80px;
+}
+
+.lp-hero-bg {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(900px 500px at 20% 25%, rgba(30,215,163,0.10), transparent 70%),
+        radial-gradient(800px 600px at 85% 70%, rgba(74,163,255,0.08), transparent 70%),
+        linear-gradient(180deg, #0a0e14 0%, #0c1320 100%);
+    z-index: 0;
+}
+.lp-hero-bg::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+}
+
+.lp-hero-inner {
+    position: relative;
+    z-index: 1;
+    max-width: 980px;
+    width: 100%;
+    text-align: center;
+}
+
+.lp-eyebrow {
+    display: inline-block;
+    padding: 6px 14px;
+    border: 1px solid rgba(30,215,163,0.35);
+    border-radius: 999px;
+    background: var(--teal-soft);
+    color: var(--teal);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    margin-bottom: 24px;
+}
+
+.lp-title {
+    font-size: clamp(2.2rem, 5vw, 3.8rem);
+    font-weight: 800;
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    margin-bottom: 22px;
+}
+.lp-title-grad {
+    background: linear-gradient(90deg, var(--teal) 0%, #6dd5ed 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.lp-lede {
+    color: var(--text-mute);
+    font-size: 1.05rem;
+    max-width: 640px;
+    margin: 0 auto 36px;
+}
+
+.lp-ctas {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 64px;
+    flex-wrap: wrap;
+}
+
+.lp-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 22px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: transform 0.15s, box-shadow 0.15s, background 0.15s, border-color 0.15s;
+}
+.lp-btn:hover { transform: translateY(-1px); }
+
+.lp-btn-primary {
+    background: linear-gradient(180deg, var(--teal) 0%, var(--teal-2) 100%);
+    color: #042118;
+    box-shadow: 0 6px 20px rgba(30,215,163,0.30);
+}
+.lp-btn-primary:hover { box-shadow: 0 8px 26px rgba(30,215,163,0.40); }
+
+.lp-btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border-2);
+    color: var(--text);
+}
+.lp-btn-ghost:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.28); }
+
+/* ── Features ────────────────────────────────── */
+.lp-features {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    text-align: left;
+    max-width: 1080px;
+    margin: 0 auto;
+}
+@media (max-width: 720px) {
+    .lp-features { grid-template-columns: 1fr; }
+}
+
+.lp-features li {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px 20px;
+    transition: border-color 0.18s, transform 0.18s;
+}
+.lp-features li:hover {
+    border-color: rgba(30,215,163,0.3);
+    transform: translateY(-2px);
+}
+.lp-features i {
+    color: var(--teal);
+    font-size: 1.2rem;
+    margin-bottom: 12px;
+    display: block;
+}
+.lp-features h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+    color: var(--text);
+}
+.lp-features p {
+    color: var(--text-mute);
+    font-size: 0.88rem;
+    line-height: 1.5;
+}
+
+/* ── Footer ──────────────────────────────────── */
+.lp-footer {
+    padding: 22px 24px;
+    text-align: center;
+    color: var(--text-mute);
+    font-size: 0.78rem;
+    border-top: 1px solid var(--border);
+    background: var(--bg-2);
+}
+
+/* ──────────────────────────────────────────────
+   REBRAND: Nahweeezy's Tactics Board overlay
+   ────────────────────────────────────────────── */
+
+/* Local Uni Sans family (FFF licensed — see assets/legal/) */
+@font-face {
+    font-family: 'Uni Sans Heavy';
+    src: url('assets/fonts/Uni%20Sans%20Heavy.otf') format('opentype');
+    font-weight: 800; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'Uni Sans Heavy';
+    src: url('assets/fonts/Uni%20Sans%20Heavy%20Italic.otf') format('opentype');
+    font-weight: 800; font-style: italic; font-display: swap;
+}
+@font-face {
+    font-family: 'Uni Sans Thin';
+    src: url('assets/fonts/Uni%20Sans%20Thin.otf') format('opentype');
+    font-weight: 200; font-style: normal; font-display: swap;
+}
+
+:root {
+    --blue:        #60a5fa;
+    --blue-2:      #3b82f6;
+    --blue-deep:   #1d4ed8;
+    --blue-soft:   rgba(96,165,250,0.14);
+    --bg-deep:     #060912;
+}
+
+.lp-body-rebrand {
+    background: var(--bg-deep);
+    font-family: 'Space Grotesk', 'Inter', sans-serif;
+}
+
+/* logo */
+.lp-logo-rebrand {
+    display: inline-flex;
+    flex-direction: column;
+    line-height: 1;
+    gap: 0;
+}
+.lp-logo-eyebrow {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.6rem;
+    letter-spacing: 0.4em;
+    color: var(--blue);
+    margin-bottom: 2px;
+    font-weight: 700;
+}
+.lp-logo-display {
+    font-family: '"Uni Sans Heavy", "Bebas Neue", sans-serif';
+    font-family: 'Uni Sans Heavy', 'Bebas Neue', sans-serif;
+    font-size: 1.35rem;
+    letter-spacing: 0.18em;
+    color: white;
+    font-weight: 800;
+}
+.lp-logo-rebrand:hover .lp-logo-display {
+    color: var(--blue);
+}
+
+/* nav cta primary (lime) */
+.lp-nav-cta-primary {
+    background: var(--blue-soft) !important;
+    border-color: rgba(96,165,250,0.45) !important;
+    color: var(--blue) !important;
+    font-family: 'Oswald', sans-serif;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 0.76rem !important;
+}
+.lp-nav-cta-primary:hover {
+    background: rgba(96,165,250,0.24) !important;
+    border-color: var(--blue) !important;
+}
+
+/* hero rebrand */
+.lp-hero-rebrand {
+    overflow: hidden;
+}
+.lp-hero-bg-rebrand {
+    background:
+        radial-gradient(900px 600px at 18% 20%, rgba(96,165,250,0.12), transparent 60%),
+        radial-gradient(900px 600px at 82% 78%, rgba(220,38,38,0.08), transparent 60%),
+        repeating-linear-gradient(135deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 14px),
+        linear-gradient(180deg, #060912 0%, #0a0e1a 100%);
+}
+.lp-hero-bg-rebrand::before {
+    background-image:
+        linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px);
+    background-size: 56px 56px;
+}
+.lp-hero-grain {
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0   0 0 0 0 0   0 0 0 0 0   0 0 0 0.04 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.55;
+}
+
+.lp-eyebrow-rebrand {
+    font-family: 'Oswald', sans-serif !important;
+    font-size: 0.7rem !important;
+    letter-spacing: 0.35em !important;
+    border-color: rgba(96,165,250,0.4) !important;
+    background: var(--blue-soft) !important;
+    color: var(--blue) !important;
+    font-weight: 700 !important;
+}
+
+/* TITLE — big stencil */
+.lp-title-rebrand {
+    font-family: 'Uni Sans Heavy', 'Bebas Neue', sans-serif !important;
+    font-weight: 800;
+    font-size: clamp(3rem, 7vw, 5.8rem) !important;
+    letter-spacing: 0.02em !important;
+    line-height: 0.95 !important;
+    text-transform: uppercase;
+}
+.lp-title-display-line1 {
+    color: white;
+    text-shadow: 0 0 35px rgba(96,165,250,0.35);
+}
+.lp-title-display-line2 {
+    color: white;
+    margin-right: 0.4em;
+}
+.lp-title-grad-rebrand {
+    background: linear-gradient(90deg, var(--blue) 0%, #93c5fd 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.lp-lede-rebrand {
+    font-size: 1.1rem !important;
+    color: #b3bbcc !important;
+    max-width: 720px;
+}
+
+/* primary lime CTA */
+.lp-btn-primary-rebrand {
+    background: linear-gradient(180deg, var(--blue) 0%, var(--blue-2) 100%) !important;
+    color: #02143a !important;
+    box-shadow: 0 6px 20px rgba(96,165,250,0.25) !important;
+    font-family: 'Oswald', sans-serif !important;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700 !important;
+}
+.lp-btn-primary-rebrand:hover {
+    box-shadow: 0 10px 28px rgba(96,165,250,0.40) !important;
+}
+.lp-btn-ghost-rebrand {
+    border: 1px solid rgba(96,165,250,0.35) !important;
+    color: var(--blue) !important;
+    font-family: 'Oswald', sans-serif !important;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700 !important;
+}
+
+/* feature cards rebrand */
+.lp-features-rebrand {
+    max-width: 1180px;
+}
+.lp-feat-card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, rgba(255,255,255,0.012) 100%) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 14px !important;
+    padding: 22px !important;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+}
+.lp-feat-card::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 70px; height: 70px;
+    background: radial-gradient(circle at top right, rgba(96,165,250,0.12), transparent 60%);
+    pointer-events: none;
+}
+.lp-feat-card:hover {
+    border-color: rgba(96,165,250,0.32) !important;
+    transform: translateY(-3px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+}
+.lp-feat-card i {
+    color: var(--blue) !important;
+    font-size: 1.3rem !important;
+    margin-bottom: 14px !important;
+}
+.lp-feat-card h3 {
+    font-family: 'Oswald', sans-serif !important;
+    letter-spacing: 0.04em !important;
+    text-transform: uppercase;
+    font-size: 0.95rem !important;
+}
+.lp-feat-card p {
+    color: #8590a3 !important;
+}
+.lp-feat-card-hot {
+    border-color: rgba(96,165,250,0.25) !important;
+    background: linear-gradient(180deg, rgba(96,165,250,0.06) 0%, rgba(96,165,250,0.012) 100%) !important;
+}
+.lp-feat-pill {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    background: var(--blue);
+    color: #02143a;
+    font-size: 0.55rem;
+    letter-spacing: 0.18em;
+    border-radius: 3px;
+    font-weight: 800;
+    font-family: 'Oswald', sans-serif;
+    vertical-align: middle;
+}
+
+.lp-auth-username {
+    font-family: 'Uni Sans Heavy', 'Oswald', sans-serif;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    color: var(--blue);
+    padding: 8px 12px;
+    background: rgba(96,165,250,0.1);
+    border: 1px solid rgba(96,165,250,0.3);
+    border-radius: 8px;
+    text-transform: uppercase;
+    font-weight: 800;
+}
+.lp-nav-cta-auth {
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    color: #cbd5e1 !important;
+    font-family: 'Uni Sans Heavy', 'Oswald', sans-serif !important;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.lp-nav-cta-auth:hover {
+    background: rgba(96,165,250,0.12) !important;
+    border-color: rgba(96,165,250,0.4) !important;
+    color: var(--blue) !important;
+}
+.lp-nav-cta-logout {
+    background: rgba(244,63,94,0.08) !important;
+    border: 1px solid rgba(244,63,94,0.3) !important;
+    color: #fda4af !important;
+    font-family: 'Uni Sans Heavy', 'Oswald', sans-serif !important;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 9px 14px;
+    border-radius: 8px;
+}
+.lp-nav-cta-logout:hover {
+    background: rgba(244,63,94,0.18) !important;
+    border-color: rgba(244,63,94,0.6) !important;
+    color: white !important;
+}
+.lp-footer-rebrand a {
+    color: var(--blue);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+}
+.lp-footer-rebrand a:hover {
+    border-bottom-color: var(--blue);
+}
+
+.lp-footer-rebrand {
+    font-family: 'Oswald', sans-serif;
+    letter-spacing: 0.18em;
+    font-size: 0.7rem !important;
+    text-transform: uppercase;
+    color: #6b7280 !important;
+    background: #060912 !important;
+}
