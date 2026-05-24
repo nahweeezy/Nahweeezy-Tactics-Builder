@@ -1,6 +1,6 @@
 # Nahweeezy's Tactics Board
 
-A browser-based tactical sandbox that allows visualization + animation of tactical football nuance - things such as in/out of possession setups, transitions, etc. 
+A browser based tactical sandbox that allows visualization + animation of tactical football nuance - things such as in/out of possession setups, transitions, etc. 
 
 This was intended to be used in conjunction with my YT page _Nahweeezy_, but I think it has a lot of potential as a product entirely. 
 
