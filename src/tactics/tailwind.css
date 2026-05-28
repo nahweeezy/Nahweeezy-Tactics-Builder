@@ -24,18 +24,96 @@
   font-weight: 200; font-style: italic; font-display: swap;
 }
 
+/* ── Theme tokens ──────────────────────────────────────────────
+   Default = "Blue" (legacy look). Overrides live under
+   html[data-theme="dark"|"light"]. "System" resolves to
+   one of those two via JS based on prefers-color-scheme. */
+:root {
+  --app-bg:        #060912;
+  --surface-1:     #080d18;   /* top bar, side panels */
+  --surface-2:     #0d141f;   /* modals */
+  --text-base:     #ffffff;
+  --text-muted:    #94a3b8;   /* ~slate-400 */
+  --text-faint:    #cbd5e1;   /* ~slate-300 */
+  --text-dim:      #64748b;   /* ~slate-500 */
+  --accent:        #60a5fa;
+  --border-base:   rgba(255,255,255,0.10);
+  --input-bg:      rgba(0,0,0,0.30);
+  --scroll-track:  #0a0e14;
+  --scroll-thumb:  rgba(255,255,255,0.08);
+}
+
+html[data-theme="dark"] {
+  --app-bg:        #0a0a0a;
+  --surface-1:     #161616;
+  --surface-2:     #1c1c1c;
+  --text-muted:    #a3a3a3;
+  --text-faint:    #d4d4d4;
+  --text-dim:      #737373;
+  --accent:        #d4d4d4;
+  --border-base:   rgba(255,255,255,0.10);
+  --scroll-track:  #0d0d0d;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  --app-bg:        #f1f5f9;
+  --surface-1:     #ffffff;
+  --surface-2:     #ffffff;
+  --text-base:     #0f172a;
+  --text-muted:    #475569;
+  --text-faint:    #334155;
+  --text-dim:      #64748b;
+  --accent:        #2563eb;
+  --border-base:   rgba(15,23,42,0.12);
+  --input-bg:      rgba(15,23,42,0.04);
+  --scroll-track:  #e2e8f0;
+  --scroll-thumb:  rgba(15,23,42,0.20);
+}
+
 html, body {
   margin: 0; padding: 0; height: 100%;
   font-family: 'Inter', system-ui, sans-serif;
-  background: #060912;
+  background: var(--app-bg);
+  color: var(--text-base);
   overscroll-behavior: none;
 }
 svg { -webkit-tap-highlight-color: transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: #0a0e14; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+::-webkit-scrollbar-track { background: var(--scroll-track); }
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(96,165,250,0.35); }
 ::selection { background: rgba(59,130,246,0.35); }
+
+/* ── Per-theme overrides for hardcoded utility classes ──────────
+   These let us swap surface colors without rewriting every
+   component. Only applied when a non-default theme is active. */
+html[data-theme="dark"]  .bg-\[\#080d18\],
+html[data-theme="light"] .bg-\[\#080d18\] { background-color: var(--surface-1) !important; }
+
+html[data-theme="dark"]  .bg-\[\#0d141f\],
+html[data-theme="light"] .bg-\[\#0d141f\] { background-color: var(--surface-2) !important; }
+
+/* Light mode needs text inversion on commonly-used utilities */
+html[data-theme="light"] .text-white      { color: var(--text-base) !important; }
+html[data-theme="light"] .text-slate-200,
+html[data-theme="light"] .text-slate-300  { color: var(--text-faint) !important; }
+html[data-theme="light"] .text-slate-400  { color: var(--text-muted) !important; }
+html[data-theme="light"] .text-slate-500  { color: var(--text-dim)  !important; }
+html[data-theme="light"] .placeholder-slate-500::placeholder { color: var(--text-dim) !important; }
+
+html[data-theme="light"] .border-white\/10,
+html[data-theme="light"] .border-white\/12,
+html[data-theme="light"] .border-white\/15,
+html[data-theme="light"] .border-white\/20  { border-color: var(--border-base) !important; }
+
+html[data-theme="light"] .bg-white\/5,
+html[data-theme="light"] .bg-white\/\[0\.03\] { background-color: rgba(15,23,42,0.03) !important; }
+html[data-theme="light"] .bg-white\/10,
+html[data-theme="light"] .bg-white\/\[0\.06\] { background-color: rgba(15,23,42,0.06) !important; }
+html[data-theme="light"] .bg-black\/30,
+html[data-theme="light"] .bg-black\/40       { background-color: var(--input-bg) !important; }
+html[data-theme="light"] .bg-black\/70       { background-color: rgba(15,23,42,0.35) !important; }
 
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 20px rgba(59,130,246,0.3); }

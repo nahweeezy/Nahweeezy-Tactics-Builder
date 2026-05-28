@@ -865,12 +865,53 @@ function FplPickerPanel({ targetPlayer, takenIds = new Set(), onPick, onClear })
 /* =============================================================
    MODAL: Display Options
    ============================================================= */
-function DisplayOptionsModal({ open, onClose, opts, setOpts }) {
+const THEME_OPTIONS = [
+  { id: 'blue',   label: 'Blue',   desc: 'The original (default)' },
+  { id: 'light',  label: 'Light',  desc: 'Bright surfaces' },
+  { id: 'dark',   label: 'Dark',   desc: 'Neutral grey' },
+  { id: 'system', label: 'System', desc: 'Follow OS' },
+];
+
+function DisplayOptionsModal({ open, onClose, opts, setOpts, theme, setTheme }) {
   if (!open) return null;
   const flag = (key) => opts[key];
   const toggle = (key) => setOpts(o => ({ ...o, [key]: !o[key] }));
   return (
-    <ModalShell title="Display Options" subtitle="Pitch overlays & extras" onClose={onClose}>
+    <ModalShell title="Display Options" subtitle="Theme, pitch overlays & extras" onClose={onClose}>
+      <div className="mb-4">
+        <div className="text-[10px] font-extrabold text-slate-400 tracking-widest mb-2"
+          style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+          THEME
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+          {THEME_OPTIONS.map(t => {
+            const active = theme === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTheme(t.id)}
+                aria-pressed={active}
+                className={`px-2 py-2 rounded-lg border text-left transition ${
+                  active
+                    ? 'bg-blue-400/15 border-blue-400/50 ring-1 ring-blue-400/40'
+                    : 'bg-white/[0.03] hover:bg-white/[0.07] border-white/10'
+                }`}
+              >
+                <div className="text-[12px] font-extrabold tracking-wide"
+                  style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+                  {t.label}
+                </div>
+                <div className="text-[10px] text-slate-400 leading-tight mt-0.5">{t.desc}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="text-[10px] font-extrabold text-slate-400 tracking-widest mb-2"
+        style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+        PITCH OVERLAYS
+      </div>
       <div className="space-y-2">
         {[
           ['fplMode',          'Premier League Player Mode', 'Click any token to assign a real PL player. Photo + name appear on the token.'],
@@ -1067,6 +1108,36 @@ function TacticsBuilder({ session, profile, signOut }) {
 
   const [showDisplayOpts, setShowDisplayOpts] = useState(false);
   const [showTacticMgmt, setShowTacticMgmt] = useState(false);
+
+  // ── Theme ──────────────────────────────────────────────────────
+  // Persisted to localStorage; one of 'blue' | 'light' | 'dark' | 'system'.
+  // "system" resolves to 'light' or 'dark' via prefers-color-scheme.
+  const [theme, setTheme] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nahweeezy_theme');
+      return ['blue', 'light', 'dark', 'system'].includes(saved) ? saved : 'blue';
+    } catch { return 'blue'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('nahweeezy_theme', theme); } catch {}
+    const apply = () => {
+      const resolved = theme === 'system'
+        ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+        : theme;
+      document.documentElement.setAttribute('data-theme', resolved);
+    };
+    apply();
+    if (theme !== 'system') return;
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const onChange = () => apply();
+    // older Safari uses addListener; modern uses addEventListener
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else mq.addListener(onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+      else mq.removeListener(onChange);
+    };
+  }, [theme]);
 
   const svgRef = useRef(null);
   const dragRef = useRef(null);
@@ -2469,6 +2540,7 @@ function TacticsBuilder({ session, profile, signOut }) {
         open={showDisplayOpts}
         onClose={() => setShowDisplayOpts(false)}
         opts={opts} setOpts={setOpts}
+        theme={theme} setTheme={setTheme}
       />
       <TacticManagementModal
         open={showTacticMgmt}

@@ -4,12 +4,25 @@ import './tailwind.css';
 import AuthGate from './auth/AuthGate';
 import TacticsBuilder from './TacticsBuilder';
 
+// Skip the login gate and render the builder with a null session.
+// Enable by either:
+//   • setting VITE_BYPASS_AUTH=1 in .env (works in any build), or
+//   • appending ?bypass=1 to the URL (dev builds only — ignored in prod)
+const bypassAuth =
+  import.meta.env.VITE_BYPASS_AUTH === '1' ||
+  (import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get('bypass') === '1');
+
 const root = createRoot(document.getElementById('root'));
 root.render(
   <StrictMode>
-    <AuthGate>
-      {(authProps) => <TacticsBuilder {...authProps} />}
-    </AuthGate>
+    {bypassAuth ? (
+      <TacticsBuilder session={null} profile={null} signOut={() => {}} />
+    ) : (
+      <AuthGate>
+        {(authProps) => <TacticsBuilder {...authProps} />}
+      </AuthGate>
+    )}
   </StrictMode>
 );
 
