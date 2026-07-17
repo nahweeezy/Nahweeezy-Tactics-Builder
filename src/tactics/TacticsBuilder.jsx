@@ -25,25 +25,48 @@ const VB_Y = -AD_BAND_TB;
 const VB_W = PITCH_W + AD_BAND_LR * 2;
 const VB_H = PITCH_H + AD_BAND_TB * 2;
 
+// Pitch-content palette. These are CONTENT colors (kits, turf, chalk) — they
+// stay fixed across UI themes and serialize safely into the PNG export,
+// unlike the chrome which flows through CSS variables.
 const COLORS = {
-  pitch:     '#1f5f30',
-  pitchAlt:  '#1d5a2d',
-  line:      'rgba(255,255,255,0.85)',
-  home:      '#2563eb',
-  homeRing:  '#1e40af',
-  away:      '#dc2626',
-  awayRing:  '#7f1d1d',
-  selected:  '#60a5fa',
-  accent:    '#60a5fa',
-  accentDeep:'#3b82f6',
+  pitch:     '#1e6a3b',
+  pitchAlt:  '#1c6237',
+  line:      'rgba(245,250,240,0.9)',
+  home:      '#eef1e6',   // white kit
+  homeRing:  '#9aa392',
+  homeText:  '#141a0a',
+  away:      '#f43f5e',   // rose kit
+  awayRing:  '#9f1239',
+  awayText:  '#ffffff',
+  selected:  '#d7ff3c',
+  accent:    '#d7ff3c',   // volt — on-pitch labels, plates, scoreboard
+  accentDeep:'#9fc426',
 };
 
 const ARROW_COLORS = {
-  white:  '#f8fafc',
-  yellow: '#fde047',
-  orange: '#fb923c',
-  blue:   '#60a5fa',
+  white:   '#f8fafc',
+  volt:    '#d7ff3c',
+  yellow:  '#fde047',
+  orange:  '#fb923c',
+  cyan:    '#22d3ee',
+  magenta: '#ff2e7e',
+  blue:    '#60a5fa',
 };
+const ARROW_COLOR_KEYS = Object.keys(ARROW_COLORS);
+
+// hex → rgba with alpha, for translucent fills derived from the palette.
+const hexA = (hex, a) => {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+};
+
+// Positional-structure bands: each unit of a team gets a connecting line.
+const SHAPE_BANDS = [
+  ['LB', 'CB', 'RB', 'LWB', 'RWB'],       // defence
+  ['CDM', 'CM', 'CAM', 'LM', 'RM'],       // midfield
+  ['LW', 'ST', 'RW', 'CF'],               // attack
+];
+const SHAPE_LINE_COLORS = { home: '#f4f6ef', away: '#ff4d6d' };
 
 // Premier League club primary colors — used to glow the ring around an FPL token.
 const PL_TEAM_COLORS = {
@@ -303,7 +326,7 @@ function PitchLines({ showChannels, showDefLine, defLines, playing, animating })
           <rect x={-36} y={26} width={72} height={18} rx={3}
             fill={COLORS.home} opacity={0.92} />
           <text x={0} y={39} textAnchor="middle" fontSize={10} fontWeight={800}
-            fill="#fff" letterSpacing="1.5"
+            fill={COLORS.homeText} letterSpacing="1.5"
             style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
             HOME LINE
           </text>
@@ -316,7 +339,7 @@ function PitchLines({ showChannels, showDefLine, defLines, playing, animating })
           <rect x={-36} y={26} width={72} height={18} rx={3}
             fill={COLORS.away} opacity={0.92} />
           <text x={0} y={39} textAnchor="middle" fontSize={10} fontWeight={800}
-            fill="#fff" letterSpacing="1.5"
+            fill={COLORS.awayText} letterSpacing="1.5"
             style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
             AWAY LINE
           </text>
@@ -344,12 +367,13 @@ function PitchLines({ showChannels, showDefLine, defLines, playing, animating })
    PLAYER TOKEN
    ============================================================= */
 function PlayerToken({
-  player, x, y, selected, animating, showStats, showMovementArrows, fplMode,
+  player, x, y, selected, dragging, animating, showStats, showMovementArrows, fplMode,
   onPointerDown, onContextMenu, onDoubleClick,
 }) {
   const isHome = player.team === 'home';
-  const fill = isHome ? COLORS.home : COLORS.away;
+  const kit = isHome ? 'url(#kitHome)' : 'url(#kitAway)';
   const ring = isHome ? COLORS.homeRing : COLORS.awayRing;
+  const labelFill = isHome ? COLORS.homeText : COLORS.awayText;
   const transition = animating ? `transform ${PHASE_DURATION}ms linear` : 'none';
   const fpl = player.fpl;
   const showHeadshot = fplMode && fpl;
@@ -366,6 +390,16 @@ function PlayerToken({
       onDoubleClick={(e) => onDoubleClick(e, player.id)}
       className="cursor-grab active:cursor-grabbing"
     >
+    {/* Inner group handles pickup scale so it can spring independently of
+        the positional translate (which must track the pointer instantly). */}
+    <g style={{
+      transform: `scale(${dragging ? 1.12 : 1})`,
+      transition: 'transform 180ms cubic-bezier(0.2, 1.6, 0.4, 1)',
+    }}>
+      {/* contact shadow — lifts while dragging */}
+      <ellipse cx={0} cy={PLAYER_R * 0.9} rx={PLAYER_R * (dragging ? 1.05 : 0.85)} ry={4.5}
+        fill="rgba(0,0,0,0.38)" style={{ transition: 'rx 180ms' }} />
+
       {selected && (
         <Fragment>
           <circle r={PLAYER_R + 7} fill="none" stroke={COLORS.selected}
@@ -425,10 +459,10 @@ function PlayerToken({
         </Fragment>
       ) : (
         <Fragment>
-          <circle r={PLAYER_R} fill={fill}
+          <circle r={PLAYER_R} fill={kit}
             style={{ filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.4))' }} />
           <text x={0} y={4} textAnchor="middle" fontSize={11} fontWeight={800}
-            fill="#ffffff" pointerEvents="none"
+            fill={labelFill} pointerEvents="none"
             style={{ userSelect: 'none', fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '0.5px' }}>
             {player.label}
           </text>
@@ -439,7 +473,7 @@ function PlayerToken({
         <g pointerEvents="none">
           <rect x={-nameWidth/2} y={PLAYER_R + 4} width={nameWidth} height={14} rx={2}
             fill="rgba(0,0,0,0.85)"
-            stroke="rgba(96,165,250,0.5)" strokeWidth={0.8} />
+            stroke="rgba(215,255,60,0.5)" strokeWidth={0.8} />
           <text x={0} y={PLAYER_R + 14} textAnchor="middle" fontSize={9} fontWeight={800}
             fill="#fff" style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '0.4px' }}>
             {nameText}
@@ -465,6 +499,78 @@ function PlayerToken({
             markerEnd="url(#arrow-white)" opacity={0.9} />
         </g>
       )}
+    </g>
+    </g>
+  );
+}
+
+/* =============================================================
+   POSITIONAL STRUCTURE LINES — connects each unit (DEF / MID / ATT)
+   of a team with a glowing polyline. Because token movement animates
+   via CSS transforms while polyline points are attributes, we tween
+   the coordinate map with rAF (linear, matching the tokens' easing)
+   so the lines glide in lockstep with the players.
+   ============================================================= */
+function ShapeLines({ players, positions, editingTeam, animating }) {
+  const [tweened, setTweened] = useState(positions);
+  const curRef = useRef(positions);   // what's currently on screen
+  const rafRef = useRef(null);
+
+  useEffect(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    const from = curRef.current;
+    const to = positions;
+    if (!animating) {
+      curRef.current = to;
+      setTweened(to);
+      return;
+    }
+    const t0 = performance.now();
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / PHASE_DURATION);
+      const cur = {};
+      for (const id in to) {
+        const b = to[id];
+        if (!b || b.x == null) continue;           // skip __ball/drawings/title
+        const a = (from[id]?.x != null) ? from[id] : b;
+        cur[id] = { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+      }
+      curRef.current = cur;
+      setTweened(cur);
+      if (k < 1) rafRef.current = requestAnimationFrame(step);
+      else rafRef.current = null;
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [positions, animating]);
+
+  const teams = editingTeam === 'both' ? ['home', 'away'] : [editingTeam];
+  return (
+    <g pointerEvents="none">
+      {teams.map(team => SHAPE_BANDS.map((band, bi) => {
+        const pts = players
+          .filter(p => p.team === team && band.includes(p.label))
+          .map(p => tweened[p.id])
+          .filter(p => p && p.x != null)
+          .sort((a, b) => a.y - b.y);
+        if (pts.length < 2) return null;
+        const d = pts.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
+        const c = SHAPE_LINE_COLORS[team];
+        return (
+          <g key={`${team}-${bi}`} opacity={0.9}>
+            {/* soft glow underlay + crisp core line */}
+            <path d={d} fill="none" stroke={c} strokeWidth={7}
+              strokeLinejoin="round" strokeLinecap="round" opacity={0.16} />
+            <path d={d} fill="none" stroke={c} strokeWidth={2.25}
+              strokeLinejoin="round" strokeLinecap="round" opacity={0.8} />
+            {/* diamond studs at each joint */}
+            {pts.map((p, i) => (
+              <rect key={i} x={-3} y={-3} width={6} height={6} fill={c} opacity={0.9}
+                transform={`translate(${p.x}, ${p.y}) rotate(45)`} />
+            ))}
+          </g>
+        );
+      }))}
     </g>
   );
 }
@@ -560,7 +666,7 @@ function CornerFlags() {
             stroke="rgba(255,255,255,0.65)" strokeWidth={1} />
           {/* flag — gentle wave via SMIL */}
           <path d={`M 0 -22 L ${c.dx} -19 L 0 -16 Z`}
-            fill="#dc2626" opacity={0.95}>
+            fill="#f43f5e" opacity={0.95}>
             <animateTransform attributeName="transform" type="rotate"
               values="-1;3;-1" dur="2.4s" repeatCount="indefinite" />
           </path>
@@ -603,14 +709,22 @@ function DustParticles() {
    FREEHAND ARROW
    ============================================================= */
 function ArrowOverlay({ arrow }) {
-  const { points, color } = arrow;
+  const { points, color, style } = arrow;
   if (!points || points.length < 2) return null;
   const stroke = ARROW_COLORS[color] || ARROW_COLORS.white;
   const d = points.map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`)).join(' ');
+  const dashed = style === 'dashed';
   return (
     <path d={d} fill="none" stroke={stroke} strokeWidth={3.5}
       strokeLinecap="round" strokeLinejoin="round"
-      markerEnd={`url(#arrow-${color})`} opacity={0.95} />
+      strokeDasharray={dashed ? '10 8' : undefined}
+      markerEnd={`url(#arrow-${color})`} opacity={0.95}>
+      {/* pass arrows march toward the target */}
+      {dashed && (
+        <animate attributeName="stroke-dashoffset" from="18" to="0"
+          dur="0.9s" repeatCount="indefinite" />
+      )}
+    </path>
   );
 }
 
@@ -718,8 +832,8 @@ function PositionGrid({ current, onPick }) {
             onClick={() => onPick(pos)}
             className={`py-2.5 rounded text-xs font-extrabold transition border ${
               active
-                ? 'bg-blue-500 border-blue-300 text-white shadow-[0_0_14px_rgba(96,165,250,0.5)]'
-                : 'bg-white/[0.04] border-white/10 hover:bg-blue-400/15 hover:border-blue-400/40 text-slate-200'
+                ? 'bg-accent border-accent text-acc-ink shadow-glow'
+                : 'bg-ink/[0.04] border-ink/10 hover:bg-accent/15 hover:border-accent/40 text-ink'
             }`}
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
             {pos}
@@ -783,9 +897,9 @@ function FplPickerPanel({ targetPlayer, takenIds = new Set(), onPick, onClear })
   if (!targetPlayer) return null;
 
   return (
-    <section className="p-3 rounded-lg bg-blue-400/[0.04] border border-blue-400/25">
+    <section className="p-3 rounded-lg bg-accent/[0.04] border border-accent/25">
       <div className="flex items-center justify-between mb-2">
-        <div className="text-[10px] font-extrabold tracking-[0.25em] text-blue-300"
+        <div className="text-[10px] font-extrabold tracking-[0.25em] text-accent"
           style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
           PL PLAYER PICKER
         </div>
@@ -798,8 +912,8 @@ function FplPickerPanel({ targetPlayer, takenIds = new Set(), onPick, onClear })
         )}
       </div>
 
-      <div className="text-[9px] text-slate-500 mb-2 font-mono tracking-wider">
-        FILTERED · <span className="text-blue-300">{fplCategoryId ? FPL_CATEGORY_LABEL[fplCategoryId] : 'ALL'}</span>
+      <div className="text-[9px] text-dim mb-2 font-mono tracking-wider">
+        FILTERED · <span className="text-accent">{fplCategoryId ? FPL_CATEGORY_LABEL[fplCategoryId] : 'ALL'}</span>
       </div>
 
       {error && (
@@ -808,7 +922,7 @@ function FplPickerPanel({ targetPlayer, takenIds = new Set(), onPick, onClear })
         </div>
       )}
       {loading && (
-        <div className="p-3 text-center text-slate-400 text-[11px]">Loading FPL squads…</div>
+        <div className="p-3 text-center text-mute text-[11px]">Loading FPL squads…</div>
       )}
       {data && (
         <Fragment>
@@ -816,9 +930,9 @@ function FplPickerPanel({ targetPlayer, takenIds = new Set(), onPick, onClear })
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search name…"
-            className="w-full bg-black/40 border border-white/10 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400 mb-2" />
+            className="w-full bg-well/50 border border-ink/10 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-accent mb-2" />
           <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}
-            className="w-full bg-black/40 border border-white/10 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400 mb-2">
+            className="w-full bg-well/50 border border-ink/10 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-accent mb-2">
             <option value="all">All clubs</option>
             {data.teams && data.teams.map(t => (
               <option key={t.id} value={t.id}>{t.short_name || t.name}</option>
@@ -835,17 +949,17 @@ function FplPickerPanel({ targetPlayer, takenIds = new Set(), onPick, onClear })
                     position: FPL_CATEGORY_LABEL[p.element_type],
                     team: team ? team.short_name : '',
                   })}
-                  className="w-full text-left p-1.5 bg-white/[0.03] hover:bg-blue-400/10 border border-white/10 hover:border-blue-400/40 rounded transition group flex gap-2 items-center">
+                  className="w-full text-left p-1.5 bg-ink/[0.03] hover:bg-accent/10 border border-ink/10 hover:border-accent/40 rounded transition group flex gap-2 items-center">
                   <img src={fplPhotoUrl(p.code)} alt={p.web_name}
-                    className="w-9 h-11 object-cover rounded bg-slate-800"
+                    className="w-9 h-11 object-cover rounded bg-well/60"
                     style={{ objectPosition: 'top' }}
                     onError={(e) => { e.currentTarget.style.opacity = '0.2'; }}/>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[12px] font-extrabold truncate group-hover:text-blue-200"
+                    <div className="text-[12px] font-extrabold truncate group-hover:text-accent"
                       style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '0.3px' }}>
                       {p.web_name}
                     </div>
-                    <div className="text-[9px] text-slate-400 font-mono">
+                    <div className="text-[9px] text-mute font-mono">
                       {team ? team.short_name : '?'} · {p.total_points} PTS
                     </div>
                   </div>
@@ -853,7 +967,7 @@ function FplPickerPanel({ targetPlayer, takenIds = new Set(), onPick, onClear })
               );
             })}
             {filtered.length === 0 && (
-              <div className="py-3 text-center text-slate-500 text-[11px]">No players match.</div>
+              <div className="py-3 text-center text-dim text-[11px]">No players match.</div>
             )}
           </div>
         </Fragment>
@@ -866,10 +980,11 @@ function FplPickerPanel({ targetPlayer, takenIds = new Set(), onPick, onClear })
    MODAL: Display Options
    ============================================================= */
 const THEME_OPTIONS = [
-  { id: 'blue',   label: 'Blue',   desc: 'The original (default)' },
-  { id: 'light',  label: 'Light',  desc: 'Bright surfaces' },
-  { id: 'dark',   label: 'Dark',   desc: 'Neutral grey' },
-  { id: 'system', label: 'System', desc: 'Follow OS' },
+  { id: 'volt',   label: 'Volt',   desc: 'Night match · electric', dots: ['#0b0d08', '#d7ff3c', '#f43f5e'] },
+  { id: 'blue',   label: 'Blue',   desc: 'The original look',      dots: ['#060912', '#60a5fa', '#e2e8f0'] },
+  { id: 'light',  label: 'Light',  desc: 'Paper & ink',            dots: ['#edefe6', '#567a00', '#1a1d0f'] },
+  { id: 'dark',   label: 'Dark',   desc: 'Neutral graphite',       dots: ['#0c0c0d', '#e4e8f0', '#6c6e78'] },
+  { id: 'system', label: 'System', desc: 'Follow OS',              dots: ['#0c0c0d', '#edefe6', '#567a00'] },
 ];
 
 function DisplayOptionsModal({ open, onClose, opts, setOpts, theme, setTheme }) {
@@ -879,11 +994,11 @@ function DisplayOptionsModal({ open, onClose, opts, setOpts, theme, setTheme }) 
   return (
     <ModalShell title="Display Options" subtitle="Theme, pitch overlays & extras" onClose={onClose}>
       <div className="mb-4">
-        <div className="text-[10px] font-extrabold text-slate-400 tracking-widest mb-2"
+        <div className="text-[10px] font-extrabold text-mute tracking-widest mb-2"
           style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
           THEME
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
           {THEME_OPTIONS.map(t => {
             const active = theme === t.id;
             return (
@@ -891,29 +1006,38 @@ function DisplayOptionsModal({ open, onClose, opts, setOpts, theme, setTheme }) 
                 key={t.id}
                 onClick={() => setTheme(t.id)}
                 aria-pressed={active}
-                className={`px-2 py-2 rounded-lg border text-left transition ${
+                className={`px-2.5 py-2 rounded-lg border text-left transition ${
                   active
-                    ? 'bg-blue-400/15 border-blue-400/50 ring-1 ring-blue-400/40'
-                    : 'bg-white/[0.03] hover:bg-white/[0.07] border-white/10'
+                    ? 'bg-accent/15 border-accent/50 ring-1 ring-accent/40'
+                    : 'bg-ink/[0.03] hover:bg-ink/[0.07] border-ink/10'
                 }`}
               >
-                <div className="text-[12px] font-extrabold tracking-wide"
-                  style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
-                  {t.label}
+                <div className="flex items-center justify-between">
+                  <div className="text-[12px] font-extrabold tracking-wide"
+                    style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+                    {t.label}
+                  </div>
+                  <div className="flex gap-0.5">
+                    {t.dots.map((c, i) => (
+                      <span key={i} className="w-2.5 h-2.5 rounded-sm border border-ink/20"
+                        style={{ background: c }} />
+                    ))}
+                  </div>
                 </div>
-                <div className="text-[10px] text-slate-400 leading-tight mt-0.5">{t.desc}</div>
+                <div className="text-[10px] text-mute leading-tight mt-0.5">{t.desc}</div>
               </button>
             );
           })}
         </div>
       </div>
 
-      <div className="text-[10px] font-extrabold text-slate-400 tracking-widest mb-2"
+      <div className="text-[10px] font-extrabold text-mute tracking-widest mb-2"
         style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
         PITCH OVERLAYS
       </div>
-      <div className="space-y-2">
+      <div className="space-y-2 max-h-[46vh] overflow-y-auto pr-1">
         {[
+          ['showShapeLines',   'Positional Structure Lines', 'Connect each unit — defence, midfield, attack — with team shape lines that glide with the players (2D).'],
           ['fplMode',          'Premier League Player Mode', 'Click any token to assign a real PL player. Photo + name appear on the token.'],
           ['showStats',        'Player Stat Badges',         'Speed / press intensity badge under each token.'],
           ['showMovementArrows','Movement Intent Arrows',    'Per-player movement vector (set in player editor).'],
@@ -925,14 +1049,15 @@ function DisplayOptionsModal({ open, onClose, opts, setOpts, theme, setTheme }) 
           ['vertical',         'Vertical Stadium View',      'Flip the whole pitch into up-and-down (portrait) orientation.'],
           ['customStadium',    'Custom 3D Stadium Model',    '3D mode only — load /assets/models/stadium.dae instead of the procedural box stands.'],
         ].map(([key, label, desc]) => (
-          <label key={key} className="flex items-start gap-3 p-3 bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 rounded-lg cursor-pointer transition">
-            <input type="checkbox" checked={!!flag(key)} onChange={() => toggle(key)}
-              className="mt-1 w-4 h-4 accent-blue-400" />
+          <label key={key} className="flex items-center gap-3 p-3 bg-ink/[0.03] hover:bg-ink/[0.06] border border-ink/10 rounded-lg cursor-pointer transition">
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-extrabold text-white"
+              <div className="text-sm font-extrabold text-ink"
                 style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '0.4px' }}>{label}</div>
-              <div className="text-[11px] text-slate-400 leading-snug">{desc}</div>
+              <div className="text-[11px] text-mute leading-snug">{desc}</div>
             </div>
+            <input type="checkbox" checked={!!flag(key)} onChange={() => toggle(key)}
+              className="sr-only" />
+            <span className="tgl" aria-hidden="true" />
           </label>
         ))}
       </div>
@@ -981,44 +1106,44 @@ function TacticManagementModal({ open, onClose, current, onLoad }) {
   };
   return (
     <ModalShell title="Tactic Management" subtitle="Save, load & manage your boards" onClose={onClose}>
-      <div className="mb-4 p-3 bg-blue-400/10 border border-blue-400/30 rounded-lg">
-        <div className="text-[10px] font-extrabold text-blue-300 tracking-widest mb-2"
+      <div className="mb-4 p-3 bg-accent/10 border border-accent/30 rounded-lg">
+        <div className="text-[10px] font-extrabold text-accent tracking-widest mb-2"
           style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
           SAVE CURRENT BOARD
         </div>
         <div className="flex gap-2">
           <input value={name} onChange={(e) => setName(e.target.value)}
             placeholder={current.name || 'Tactic name...'}
-            className="flex-1 bg-black/40 border border-white/10 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+            className="flex-1 bg-well/50 border border-ink/10 rounded px-3 py-2 text-sm focus:outline-none focus:border-accent" />
           <button onClick={doSave}
-            className="px-4 py-2 bg-blue-500 hover:bg-blue-400 text-white font-extrabold text-sm rounded transition"
+            className="px-4 py-2 bg-accent hover:brightness-110 text-acc-ink font-extrabold text-sm rounded transition"
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '0.6px' }}>
             SAVE
           </button>
         </div>
       </div>
-      <div className="text-[10px] font-extrabold text-slate-400 tracking-widest mb-2"
+      <div className="text-[10px] font-extrabold text-mute tracking-widest mb-2"
         style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
         SAVED ({list.length})
       </div>
       {list.length === 0 ? (
-        <div className="text-center py-8 text-slate-500 text-sm">No saved tactics yet.</div>
+        <div className="text-center py-8 text-dim text-sm">No saved tactics yet.</div>
       ) : (
         <div className="space-y-2 max-h-80 overflow-auto pr-1">
           {list.map(entry => (
-            <div key={entry.id} className="p-3 bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 rounded-lg flex items-center gap-3 transition">
+            <div key={entry.id} className="p-3 bg-ink/[0.03] hover:bg-ink/[0.06] border border-ink/10 rounded-lg flex items-center gap-3 transition">
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-bold truncate" style={{ fontFamily: 'Oswald, sans-serif', letterSpacing: '0.3px' }}>
                   {entry.name}
                 </div>
-                <div className="text-[10px] text-slate-500 font-mono">{new Date(entry.saved_at).toLocaleString()}</div>
+                <div className="text-[10px] text-dim font-mono">{new Date(entry.saved_at).toLocaleString()}</div>
               </div>
               <button onClick={() => doLoad(entry)}
-                className="px-3 py-1.5 text-xs font-extrabold bg-blue-400/20 hover:bg-blue-400/30 border border-blue-400/40 text-blue-200 rounded">
+                className="px-3 py-1.5 text-xs font-extrabold bg-accent/20 hover:bg-accent/30 border border-accent/40 text-accent rounded">
                 LOAD
               </button>
               <button onClick={() => doExport(entry)}
-                className="px-2 py-1.5 text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 rounded" title="Download as JSON">↓</button>
+                className="px-2 py-1.5 text-xs font-bold bg-ink/5 hover:bg-ink/10 border border-ink/10 rounded" title="Download as JSON">↓</button>
               <button onClick={() => { if (confirm(`Delete "${entry.name}"?`)) doDelete(entry.id); }}
                 className="px-2 py-1.5 text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 rounded">✕</button>
             </div>
@@ -1039,17 +1164,18 @@ function ModalShell({ title, subtitle, onClose, children, wide }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
-      <div className={`${wide ? 'max-w-3xl' : 'max-w-md'} w-full bg-[#0d141f] border border-white/12 rounded-xl shadow-2xl overflow-hidden`}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm backdrop-fade" onClick={onClose}>
+      <div className={`${wide ? 'max-w-3xl' : 'max-w-md'} w-full bg-s2 border border-ink/15 rounded-xl shadow-2xl overflow-hidden modal-pop corner-tape`}
         onClick={(e) => e.stopPropagation()}
-        style={{ boxShadow: '0 30px 80px rgba(0,0,0,0.6), 0 0 60px rgba(96,165,250,0.10)' }}>
-        <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-blue-500/[0.08] to-transparent">
+        style={{ boxShadow: '0 30px 80px rgba(0,0,0,0.6), 0 0 60px rgb(var(--accent-rgb) / 0.12)' }}>
+        <div className="h-0.5" style={{ background: 'linear-gradient(90deg, var(--accent), transparent 70%)' }} />
+        <div className="px-5 py-3.5 border-b border-ink/10 flex items-center justify-between bg-gradient-to-r from-accent/[0.08] to-transparent">
           <div>
-            <div className="text-lg font-extrabold" style={{ fontFamily: '"Uni Sans Heavy", "Bebas Neue", sans-serif', letterSpacing: '2px' }}>{title}</div>
-            {subtitle && <div className="text-[10px] text-slate-400 font-mono tracking-wide">{subtitle}</div>}
+            <div className="text-lg font-extrabold" style={{ fontFamily: '"Uni Sans Heavy", "Bebas Neue", sans-serif', letterSpacing: '2px', fontStyle: 'italic' }}>{title}</div>
+            {subtitle && <div className="text-[10px] text-mute font-mono tracking-wide">{subtitle}</div>}
           </div>
           <button onClick={onClose}
-            className="w-8 h-8 rounded-md bg-white/5 hover:bg-white/15 border border-white/10 text-slate-300 hover:text-white text-lg leading-none">×</button>
+            className="w-8 h-8 rounded-md bg-ink/5 hover:bg-ink/15 border border-ink/10 text-mute hover:text-ink text-lg leading-none">×</button>
         </div>
         <div className="p-5">{children}</div>
       </div>
@@ -1071,6 +1197,8 @@ function TacticsBuilder({ session, profile, signOut }) {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [tool, setTool] = useState('select');
   const [arrowColor, setArrowColor] = useState('white');
+  // 'solid' = run, 'dashed' = pass — stored per arrow when drawn.
+  const [arrowStyle, setArrowStyle] = useState('solid');
   // Top-level drawings — used when no phase is active. When a phase IS active,
   // drawings live inside that phase's `.drawings` object so they swap when
   // the user moves between phases.
@@ -1078,11 +1206,14 @@ function TacticsBuilder({ session, profile, signOut }) {
   const [zones, setZones] = useState([]);
   const [texts, setTexts] = useState([]);
   const [presses, setPresses] = useState([]);
+  const [shapes, setShapes] = useState([]);      // rect/square objects
   const [tacticName, setTacticName] = useState('Untitled tactic');
   const [animating, setAnimating] = useState(false);
   const [drawingArrow, setDrawingArrow] = useState(null);
   const [drawingZone, setDrawingZone] = useState(null);
+  const [drawingShape, setDrawingShape] = useState(null);
   const [showSidePanel, setShowSidePanel] = useState(true);
+  const [draggingId, setDraggingId] = useState(null);  // token pickup scale
   const [trails, setTrails] = useState([]);
   const [activePreset, setActivePreset] = useState('4-3-3');
   const [compareMode, setCompareMode] = useState(false);
@@ -1102,6 +1233,7 @@ function TacticsBuilder({ session, profile, signOut }) {
     showAds: true,
     fplMode: false,
     showBall: true,
+    showShapeLines: true,   // positional-structure unit lines (2D)
     vertical: false,        // up-and-down stadium orientation
     customStadium: false,   // 3D-only: use the user-supplied .dae model
   });
@@ -1110,16 +1242,18 @@ function TacticsBuilder({ session, profile, signOut }) {
   const [showTacticMgmt, setShowTacticMgmt] = useState(false);
 
   // ── Theme ──────────────────────────────────────────────────────
-  // Persisted to localStorage; one of 'blue' | 'light' | 'dark' | 'system'.
-  // "system" resolves to 'light' or 'dark' via prefers-color-scheme.
+  // Persisted to localStorage; one of 'volt' | 'blue' | 'light' | 'dark' |
+  // 'system'. Volt is the default identity; "system" resolves to light/dark
+  // via prefers-color-scheme. v2 key: the v1 default was force-written as
+  // 'blue' on first load, so honoring it would hide the redesign.
   const [theme, setTheme] = useState(() => {
     try {
-      const saved = localStorage.getItem('nahweeezy_theme');
-      return ['blue', 'light', 'dark', 'system'].includes(saved) ? saved : 'blue';
-    } catch { return 'blue'; }
+      const saved = localStorage.getItem('nahweeezy_theme_v2');
+      return ['volt', 'blue', 'light', 'dark', 'system'].includes(saved) ? saved : 'volt';
+    } catch { return 'volt'; }
   });
   useEffect(() => {
-    try { localStorage.setItem('nahweeezy_theme', theme); } catch {}
+    try { localStorage.setItem('nahweeezy_theme_v2', theme); } catch {}
     const apply = () => {
       const resolved = theme === 'system'
         ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
@@ -1150,9 +1284,10 @@ function TacticsBuilder({ session, profile, signOut }) {
     players: JSON.parse(JSON.stringify(players)),
     arrows: JSON.parse(JSON.stringify(arrows)),
     zones: [...zones], texts: [...texts], presses: [...presses],
+    shapes: [...shapes],
     phases: phases.map(p => p ? { ...p } : null),
     ballPos: { ...ballPos },
-  }), [players, arrows, zones, texts, presses, phases, ballPos]);
+  }), [players, arrows, zones, texts, presses, shapes, phases, ballPos]);
   const pushHistory = useCallback(() => {
     historyRef.current.push(snapshot());
     if (historyRef.current.length > 50) historyRef.current.shift();
@@ -1161,6 +1296,7 @@ function TacticsBuilder({ session, profile, signOut }) {
   const restore = (snap) => {
     setPlayers(snap.players); setArrows(snap.arrows); setZones(snap.zones);
     setTexts(snap.texts); setPresses(snap.presses); setPhases(snap.phases);
+    setShapes(snap.shapes || []);
     if (snap.ballPos) setBallPos(snap.ballPos);
   };
   const undo = () => {
@@ -1220,10 +1356,11 @@ function TacticsBuilder({ session, profile, signOut }) {
       return {
         arrows: d.arrows || [], zones: d.zones || [],
         texts: d.texts || [], presses: d.presses || [],
+        shapes: d.shapes || [],
       };
     }
-    return { arrows, zones, texts, presses };
-  }, [currentPhase, phases, arrows, zones, texts, presses]);
+    return { arrows, zones, texts, presses, shapes };
+  }, [currentPhase, phases, arrows, zones, texts, presses, shapes]);
 
   // ── Goal confetti ───────────────────────────────────────────
   // When the ball enters a goal mouth, fire a celebratory confetti burst.
@@ -1252,14 +1389,15 @@ function TacticsBuilder({ session, profile, signOut }) {
     if (currentPhase >= 0) {
       setPhases(prev => prev.map((ph, i) => {
         if (i !== currentPhase) return ph;
-        const d = ph?.drawings || { arrows: [], zones: [], texts: [], presses: [] };
-        return { ...(ph || {}), drawings: { ...d, [kind]: apply(d[kind]) } };
+        const d = ph?.drawings || { arrows: [], zones: [], texts: [], presses: [], shapes: [] };
+        return { ...(ph || {}), drawings: { ...d, [kind]: apply(d[kind] || []) } };
       }));
     } else {
       if (kind === 'arrows')  setArrows(apply);
       if (kind === 'zones')   setZones(apply);
       if (kind === 'texts')   setTexts(apply);
       if (kind === 'presses') setPresses(apply);
+      if (kind === 'shapes')  setShapes(apply);
     }
   };
 
@@ -1316,6 +1454,7 @@ function TacticsBuilder({ session, profile, signOut }) {
     if (!cur) return;
     dragRef.current = { type: 'player', id, offset: { x: pt.x - cur.x, y: pt.y - cur.y }, moved: false };
     setSelectedPlayer(id);
+    setDraggingId(id);
     pushHistory();
   };
   const startBallDrag = (pt) => {
@@ -1333,6 +1472,9 @@ function TacticsBuilder({ session, profile, signOut }) {
     } else if (tool === 'zone') {
       setDrawingZone({ x: pt.x, y: pt.y, w: 0, h: 0, sx: pt.x, sy: pt.y });
       dragRef.current = { type: 'zone' };
+    } else if (tool === 'shape') {
+      setDrawingShape({ x: pt.x, y: pt.y, w: 0, h: 0, sx: pt.x, sy: pt.y });
+      dragRef.current = { type: 'shape-draw' };
     } else if (tool === 'text') {
       const text = window.prompt('Note text:');
       if (text && text.trim()) {
@@ -1346,7 +1488,7 @@ function TacticsBuilder({ session, profile, signOut }) {
       setSelectedPlayer(null);
     }
   };
-  const continueDragOrDraw = (pt) => {
+  const continueDragOrDraw = (pt, shiftKey = false) => {
     if (!dragRef.current) return;
     const d = dragRef.current;
     if (d.type === 'player') {
@@ -1386,6 +1528,30 @@ function TacticsBuilder({ session, profile, signOut }) {
         const nh = Math.abs(pt.y - z.sy);
         return { ...z, x: nx, y: ny, w: nw, h: nh };
       });
+    } else if (d.type === 'shape-draw') {
+      setDrawingShape(s => {
+        if (!s) return null;
+        let dx = pt.x - s.sx;
+        let dy = pt.y - s.sy;
+        if (shiftKey) {
+          // Perfect square — longest side wins, sign follows the pointer
+          const side = Math.max(Math.abs(dx), Math.abs(dy));
+          dx = Math.sign(dx || 1) * side;
+          dy = Math.sign(dy || 1) * side;
+        }
+        return {
+          ...s,
+          x: Math.min(s.sx, s.sx + dx),
+          y: Math.min(s.sy, s.sy + dy),
+          w: Math.abs(dx),
+          h: Math.abs(dy),
+        };
+      });
+    } else if (d.type === 'shape-move') {
+      const nx = clamp(d.orig.x + (pt.x - d.start.x), 4, PITCH_W - d.w - 4);
+      const ny = clamp(d.orig.y + (pt.y - d.start.y), 4, PITCH_H - d.h - 4);
+      updateDrawings('shapes', prev => prev.map(s =>
+        s.id === d.id ? { ...s, x: nx, y: ny } : s));
     }
   };
 
@@ -1417,7 +1583,24 @@ function TacticsBuilder({ session, profile, signOut }) {
 
   const onPointerMove = (e) => {
     if (!dragRef.current) return;
-    continueDragOrDraw(getPitchPoint(e));
+    continueDragOrDraw(getPitchPoint(e), e.shiftKey);
+  };
+
+  // Move an existing shape object with the select tool.
+  const beginDragShape = (e, id) => {
+    if (playing || tool !== 'select') return;
+    e.stopPropagation(); e.preventDefault();
+    const shape = live.shapes.find(s => s.id === id);
+    if (!shape) return;
+    pushHistory();
+    dragRef.current = {
+      type: 'shape-move', id,
+      start: getPitchPoint(e),
+      orig: { x: shape.x, y: shape.y },
+      w: shape.w, h: shape.h,
+    };
+    const svg = svgRef.current;
+    if (svg?.setPointerCapture) { try { svg.setPointerCapture(e.pointerId); } catch {} }
   };
 
   const endDragOrDraw = () => {
@@ -1430,27 +1613,32 @@ function TacticsBuilder({ session, profile, signOut }) {
         const len = Math.hypot(last.x - first.x, last.y - first.y);
         if (len > 12) {
           pushHistory();
-          updateDrawings('arrows', prev => [...prev, { id: uid('a'), points: drawingArrow.points, color: arrowColor }]);
+          updateDrawings('arrows', prev => [...prev, { id: uid('a'), points: drawingArrow.points, color: arrowColor, style: arrowStyle }]);
         }
       }
       setDrawingArrow(null);
     } else if (d.type === 'zone' && drawingZone) {
       if (drawingZone.w > 18 && drawingZone.h > 18) {
         pushHistory();
-        const fillMap = {
-          white:  'rgba(255,255,255,0.14)',
-          yellow: 'rgba(253,224,71,0.18)',
-          orange: 'rgba(251,146,60,0.18)',
-          blue:   'rgba(96,165,250,0.20)',
-        };
         updateDrawings('zones', prev => [...prev, {
           id: uid('z'), x: drawingZone.x, y: drawingZone.y,
-          w: drawingZone.w, h: drawingZone.h, color: fillMap[arrowColor] || fillMap.white,
+          w: drawingZone.w, h: drawingZone.h,
+          color: hexA(ARROW_COLORS[arrowColor] || ARROW_COLORS.white, 0.16),
         }]);
       }
       setDrawingZone(null);
+    } else if (d.type === 'shape-draw' && drawingShape) {
+      if (drawingShape.w > 14 && drawingShape.h > 14) {
+        pushHistory();
+        updateDrawings('shapes', prev => [...prev, {
+          id: uid('s'), x: drawingShape.x, y: drawingShape.y,
+          w: drawingShape.w, h: drawingShape.h, color: arrowColor,
+        }]);
+      }
+      setDrawingShape(null);
     }
     dragRef.current = null;
+    setDraggingId(null);
   };
   // 2D wrapper for SVG onPointerUp/onPointerLeave
   const onPointerUp = () => endDragOrDraw();
@@ -1473,7 +1661,7 @@ function TacticsBuilder({ session, profile, signOut }) {
   const tryErase = (kind, id) => {
     if (tool !== 'eraser') return false;
     pushHistory();
-    const collKey = { arrow: 'arrows', zone: 'zones', text: 'texts', press: 'presses' }[kind];
+    const collKey = { arrow: 'arrows', zone: 'zones', text: 'texts', press: 'presses', shape: 'shapes' }[kind];
     if (collKey) updateDrawings(collKey, prev => prev.filter(x => x.id !== id));
     return true;
   };
@@ -1521,6 +1709,7 @@ function TacticsBuilder({ session, profile, signOut }) {
     setZones(prev => prev.map(z => ({ ...z, x: mirrorX(z.x + z.w) })));
     setTexts(prev => prev.map(t => ({ ...t, x: mirrorX(t.x) })));
     setPresses(prev => prev.map(p => ({ ...p, x: mirrorX(p.x) })));
+    setShapes(prev => prev.map(s => ({ ...s, x: mirrorX(s.x + s.w) })));
     setBallPos(prev => ({ x: mirrorX(prev.x), y: prev.y }));
     setPhases(prev => prev.map(ph => {
       if (!ph) return null;
@@ -1539,6 +1728,7 @@ function TacticsBuilder({ session, profile, signOut }) {
             zones: (d.zones || []).map(z => ({ ...z, x: mirrorX(z.x + z.w) })),
             texts: (d.texts || []).map(t => ({ ...t, x: mirrorX(t.x) })),
             presses: (d.presses || []).map(p => ({ ...p, x: mirrorX(p.x) })),
+            shapes: (d.shapes || []).map(s => ({ ...s, x: mirrorX(s.x + s.w) })),
           };
         } else if (k === 'title') {
           out.title = ph.title;
@@ -1557,8 +1747,9 @@ function TacticsBuilder({ session, profile, signOut }) {
       updateDrawings('zones', []);
       updateDrawings('texts', []);
       updateDrawings('presses', []);
+      updateDrawings('shapes', []);
     } else {
-      setArrows([]); setZones([]); setTexts([]); setPresses([]);
+      setArrows([]); setZones([]); setTexts([]); setPresses([]); setShapes([]);
     }
   };
 
@@ -1575,6 +1766,7 @@ function TacticsBuilder({ session, profile, signOut }) {
       zones:   live.zones.map(z   => ({ ...z })),
       texts:   live.texts.map(t   => ({ ...t })),
       presses: live.presses.map(p => ({ ...p })),
+      shapes:  live.shapes.map(s  => ({ ...s })),
     };
     setPhases(prev => {
       // Auto-grow if the user is saving past the current array length.
@@ -1689,7 +1881,7 @@ function TacticsBuilder({ session, profile, signOut }) {
       canvas.width = VB_W * scale;
       canvas.height = (VB_H + 80) * scale;
       const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#060912';
+      ctx.fillStyle = '#0b0d08';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 80 * scale, VB_W * scale, VB_H * scale);
       ctx.fillStyle = '#e7ebf2';
@@ -1709,7 +1901,7 @@ function TacticsBuilder({ session, profile, signOut }) {
 
   /* ── Tactic save/load ────────────────────────────────────── */
   const collectTacticData = () => ({
-    name: tacticName, players, phases, arrows, zones, texts, presses, ballPos,
+    name: tacticName, players, phases, arrows, zones, texts, presses, shapes, ballPos,
     activePreset, possessionMode, editingTeam,
     saved_with_version: 'v3',
   });
@@ -1721,6 +1913,7 @@ function TacticsBuilder({ session, profile, signOut }) {
     setPhases(d.phases || [null, null, null, null]);
     setArrows(d.arrows || []); setZones(d.zones || []);
     setTexts(d.texts || []); setPresses(d.presses || []);
+    setShapes(d.shapes || []);
     if (d.ballPos) setBallPos(d.ballPos);
     setCurrentPhase(-1);
     setActivePreset(d.activePreset || '4-3-3');
@@ -1764,6 +1957,36 @@ function TacticsBuilder({ session, profile, signOut }) {
       stroke={ARROW_COLORS[arrowColor]} strokeOpacity={0.6}
       strokeDasharray="6 4" strokeWidth={2} pointerEvents="none" />
   );
+  const renderDrawingShape = drawingShape && (
+    <rect x={drawingShape.x} y={drawingShape.y} width={drawingShape.w} height={drawingShape.h}
+      fill={ARROW_COLORS[arrowColor]} fillOpacity={0.08}
+      stroke={ARROW_COLORS[arrowColor]} strokeOpacity={0.85}
+      strokeDasharray="8 5" strokeWidth={2.5} pointerEvents="none" />
+  );
+
+  // Corner-bracket rect object — crisp outline, faint fill, bold corners.
+  const renderShapeObject = (s) => {
+    const c = ARROW_COLORS[s.color] || ARROW_COLORS.white;
+    const tick = Math.min(12, s.w / 3, s.h / 3);
+    const corners = [
+      `M ${s.x} ${s.y + tick} L ${s.x} ${s.y} L ${s.x + tick} ${s.y}`,
+      `M ${s.x + s.w - tick} ${s.y} L ${s.x + s.w} ${s.y} L ${s.x + s.w} ${s.y + tick}`,
+      `M ${s.x + s.w} ${s.y + s.h - tick} L ${s.x + s.w} ${s.y + s.h} L ${s.x + s.w - tick} ${s.y + s.h}`,
+      `M ${s.x + tick} ${s.y + s.h} L ${s.x} ${s.y + s.h} L ${s.x} ${s.y + s.h - tick}`,
+    ];
+    return (
+      <g key={s.id} data-shape={s.id}
+        onPointerDown={(e) => beginDragShape(e, s.id)}
+        onClick={() => tryErase('shape', s.id)}
+        style={{ cursor: tool === 'select' ? 'move' : tool === 'eraser' ? 'not-allowed' : undefined }}>
+        <rect x={s.x} y={s.y} width={s.w} height={s.h}
+          fill={hexA(c, 0.09)} stroke={c} strokeWidth={2} strokeOpacity={0.8} />
+        {corners.map((d, i) => (
+          <path key={i} d={d} fill="none" stroke={c} strokeWidth={4} strokeLinecap="square" />
+        ))}
+      </g>
+    );
+  };
 
   const adSlots = useMemo(() => buildAdSlots(DEFAULT_ADS), []);
 
@@ -1800,12 +2023,12 @@ function TacticsBuilder({ session, profile, signOut }) {
         viewBox={opts.vertical ? verticalVB : horizontalVB}
         className={
           opts.vertical
-            ? 'select-none touch-none rounded-xl border border-white/10 pitch-clip'
-            : 'w-full h-auto select-none touch-none rounded-xl border border-white/10 pitch-clip'
+            ? 'select-none touch-none rounded-xl border border-ink/10 pitch-clip'
+            : 'w-full h-auto select-none touch-none rounded-xl border border-ink/10 pitch-clip'
         }
         style={{
-          background: 'radial-gradient(800px 400px at 50% 0%, rgba(96,165,250,0.10), transparent 70%), #060912',
-          boxShadow: '0 30px 80px rgba(0,0,0,0.55), 0 0 60px rgba(96,165,250,0.08)',
+          background: 'radial-gradient(800px 400px at 50% 0%, rgba(215,255,60,0.10), transparent 70%), #0b0d08',
+          boxShadow: '0 30px 80px rgba(0,0,0,0.55), 0 0 60px rgba(215,255,60,0.08)',
           ...(opts.vertical ? verticalSize : {}),
           cursor:
             tool === 'select' ? 'default' :
@@ -1829,16 +2052,16 @@ function TacticsBuilder({ session, profile, signOut }) {
           ))}
           <radialGradient id="pressGrad">
             <stop offset="0%" stopColor="#fb7185" stopOpacity="0.9" />
-            <stop offset="100%" stopColor="#dc2626" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.4" />
           </radialGradient>
           <radialGradient id="pitchVignette">
             <stop offset="60%" stopColor="rgba(0,0,0,0)" />
             <stop offset="100%" stopColor="rgba(0,0,0,0.35)" />
           </radialGradient>
           <radialGradient id="playGlow" cx="50%" cy="50%" r="60%">
-            <stop offset="0%" stopColor="rgba(96,165,250,0)" />
-            <stop offset="80%" stopColor="rgba(96,165,250,0.05)" />
-            <stop offset="100%" stopColor="rgba(96,165,250,0.18)" />
+            <stop offset="0%" stopColor="rgba(215,255,60,0)" />
+            <stop offset="80%" stopColor="rgba(215,255,60,0.05)" />
+            <stop offset="100%" stopColor="rgba(215,255,60,0.18)" />
           </radialGradient>
           {/* corner floodlight cones */}
           <radialGradient id="floodTL" cx="0%" cy="0%" r="80%">
@@ -1871,13 +2094,24 @@ function TacticsBuilder({ session, profile, signOut }) {
             <circle cx="2" cy="2" r="1" fill="rgba(20,30,50,0.85)" />
             <circle cx="5" cy="4" r="0.9" fill="rgba(35,45,65,0.85)" />
           </pattern>
+          {/* kit shading — off-center light source for a 3D shirt read */}
+          <radialGradient id="kitHome" cx="35%" cy="30%" r="85%">
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="65%" stopColor="#eef1e6" />
+            <stop offset="100%" stopColor="#c6cdb9" />
+          </radialGradient>
+          <radialGradient id="kitAway" cx="35%" cy="30%" r="85%">
+            <stop offset="0%" stopColor="#ff7d92" />
+            <stop offset="60%" stopColor="#f43f5e" />
+            <stop offset="100%" stopColor="#b31237" />
+          </radialGradient>
         </defs>
 
         {/* All visible content lives inside this `<g>`. When `opts.vertical`
             is true we rotate 90° clockwise around the center of the original
             viewBox; the swapped viewBox above keeps the result in frame. */}
         <g transform={opts.vertical ? `rotate(90 ${cx} ${cy})` : undefined}>
-        <rect x={VB_X} y={VB_Y} width={VB_W} height={VB_H} fill="#060912" />
+        <rect x={VB_X} y={VB_Y} width={VB_W} height={VB_H} fill="#0b0d08" />
         <rect x={VB_X + 4} y={VB_Y + 4} width={VB_W - 8} height={VB_H - 8}
           fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
 
@@ -1894,7 +2128,7 @@ function TacticsBuilder({ session, profile, signOut }) {
         )}
 
         <rect x={-8} y={-8} width={PITCH_W + 16} height={PITCH_H + 16}
-          fill="none" stroke="rgba(96,165,250,0.22)" strokeWidth={2} rx={4} />
+          fill="none" stroke="rgba(215,255,60,0.22)" strokeWidth={2} rx={4} />
 
         <PitchLines showChannels={opts.showChannels} showDefLine={opts.showDefLine} defLines={defLines} playing={playing} animating={animating} />
 
@@ -1920,8 +2154,8 @@ function TacticsBuilder({ session, profile, signOut }) {
         {playing && (
           <g pointerEvents="none">
             <rect x={PITCH_W / 2 - 110} y={32} width={220} height={32} rx={4}
-              fill="rgba(0,0,0,0.85)" stroke="rgba(96,165,250,0.5)" strokeWidth={1} />
-            <rect x={PITCH_W / 2 - 110} y={32} width={6} height={32} fill="#dc2626" />
+              fill="rgba(0,0,0,0.85)" stroke="rgba(215,255,60,0.5)" strokeWidth={1} />
+            <rect x={PITCH_W / 2 - 110} y={32} width={6} height={32} fill="#f43f5e" />
             <text x={PITCH_W / 2 - 96} y={54} fontSize={14} fontWeight={900}
               fill="#ffffff" letterSpacing="2"
               style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
@@ -1937,6 +2171,12 @@ function TacticsBuilder({ session, profile, signOut }) {
           <AdBoard key={`ad-${i}`} slot={slot} />
         ))}
 
+        {/* POSITIONAL STRUCTURE — unit lines under drawings & tokens */}
+        {opts.showShapeLines && (
+          <ShapeLines players={players} positions={positions}
+            editingTeam={editingTeam} animating={animating} />
+        )}
+
         {live.zones.map(z => (
           <rect key={z.id} x={z.x} y={z.y} width={z.w} height={z.h}
             fill={z.color}
@@ -1944,6 +2184,7 @@ function TacticsBuilder({ session, profile, signOut }) {
             strokeWidth={1.5} strokeDasharray="4 4"
             onClick={() => tryErase('zone', z.id)} />
         ))}
+        {live.shapes.map(renderShapeObject)}
         {opts.showTrails && trails.map(t => (
           <line key={t.id} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2}
             stroke="rgba(255,255,255,0.5)" strokeWidth={1.5} strokeDasharray="4 4" pointerEvents="none" />
@@ -1967,8 +2208,8 @@ function TacticsBuilder({ session, profile, signOut }) {
           <g key={t.id} transform={`translate(${t.x},${t.y})`}
             onClick={() => tryErase('text', t.id)}>
             <rect x={-4} y={-13} width={t.text.length * 7 + 14} height={20} rx={2}
-              fill="rgba(0,0,0,0.82)" stroke="rgba(96,165,250,0.42)" strokeWidth={1} />
-            <text x={4} y={2} fontSize={11} fontWeight={800} fill="#60a5fa"
+              fill="rgba(0,0,0,0.82)" stroke="rgba(215,255,60,0.42)" strokeWidth={1} />
+            <text x={4} y={2} fontSize={11} fontWeight={800} fill="#d7ff3c"
               style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1.2px' }}>
               {t.text}
             </text>
@@ -1977,6 +2218,7 @@ function TacticsBuilder({ session, profile, signOut }) {
 
         {mode === possessionMode && renderDrawingArrow}
         {mode === possessionMode && renderDrawingZone}
+        {mode === possessionMode && renderDrawingShape}
 
         {/* Goal confetti — re-renders the burst whenever goalFire.key changes */}
         <GoalConfetti origin={goalFire.origin} fireKey={goalFire.key} />
@@ -1999,6 +2241,7 @@ function TacticsBuilder({ session, profile, signOut }) {
                 x={positions[p.id].x}
                 y={positions[p.id].y}
                 selected={selectedPlayer === p.id}
+                dragging={draggingId === p.id}
                 animating={animating}
                 showStats={opts.showStats}
                 showMovementArrows={opts.showMovementArrows}
@@ -2012,8 +2255,8 @@ function TacticsBuilder({ session, profile, signOut }) {
 
         <g pointerEvents="none">
           <rect x={20} y={PITCH_H - 50} width={240} height={32} rx={4}
-            fill="rgba(0,0,0,0.78)" stroke="rgba(96,165,250,0.42)" strokeWidth={1} />
-          <text x={32} y={PITCH_H - 28} fontSize={14} fontWeight={800} fill="#60a5fa"
+            fill="rgba(0,0,0,0.78)" stroke="rgba(215,255,60,0.42)" strokeWidth={1} />
+          <text x={32} y={PITCH_H - 28} fontSize={14} fontWeight={800} fill="#d7ff3c"
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1.5px' }}>
             {label}
           </text>
@@ -2033,64 +2276,58 @@ function TacticsBuilder({ session, profile, signOut }) {
   const phaseSavedCount = phases.filter(Boolean).length;
 
   return (
-    <div className="min-h-screen w-full text-slate-100 flex flex-col"
-      style={{
-        fontFamily: '"Space Grotesk", Inter, system-ui, sans-serif',
-        background: `
-          radial-gradient(900px 600px at 15% 0%, rgba(96,165,250,0.07), transparent 60%),
-          radial-gradient(800px 600px at 85% 100%, rgba(220,38,38,0.05), transparent 60%),
-          repeating-linear-gradient(135deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 12px),
-          #060912`,
-      }}>
+    <div className="min-h-screen w-full text-ink flex flex-col app-shell"
+      style={{ fontFamily: '"Space Grotesk", Inter, system-ui, sans-serif' }}>
 
       {/* TOP BAR */}
-      <header className="flex items-center gap-2.5 px-4 py-2.5 border-b border-white/10 bg-[#080d18]/95 backdrop-blur flex-wrap relative">
+      <header className="flex items-center gap-2.5 px-4 py-2.5 border-b border-ink/10 bg-s1/95 backdrop-blur flex-wrap relative rise">
         <div className="absolute left-0 top-0 bottom-0 w-1"
-          style={{background: 'linear-gradient(180deg, #60a5fa 0%, #3b82f6 50%, #1d4ed8 100%)'}} />
+          style={{background: 'linear-gradient(180deg, var(--accent) 0%, var(--accent-deep) 100%)'}} />
 
         <a href="../index.html" className="flex flex-col group select-none mr-2 ml-1.5">
-          <span className="text-[10px] font-extrabold tracking-[0.3em] text-blue-400 -mb-1"
-            style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>NAHWEEEZY'S</span>
-          <span className="text-[1.18rem] font-black tracking-[0.18em] leading-none text-white group-hover:text-blue-300 transition"
-            style={{fontFamily:'"Uni Sans Heavy", "Bebas Neue", sans-serif'}}>
+          <span className="text-[10px] font-extrabold tracking-[0.3em] text-accent -mb-1"
+            style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif', fontStyle:'italic'}}>NAHWEEEZY'S</span>
+          <span className="text-[1.18rem] font-black tracking-[0.14em] leading-none text-ink group-hover:text-accent transition flex items-center gap-1.5"
+            style={{fontFamily:'"Uni Sans Heavy", "Bebas Neue", sans-serif', fontStyle:'italic'}}>
             TACTICS BOARD
+            <span className="inline-block w-2 h-2 -skew-x-12 bg-accent group-hover:animate-pulse" />
           </span>
         </a>
 
-        <div className="h-7 w-px bg-white/10" />
+        <div className="h-7 w-px bg-ink/10" />
 
         <input
           value={tacticName} onChange={(e) => setTacticName(e.target.value)}
-          className="bg-black/30 border border-white/10 rounded px-2.5 py-1.5 text-sm font-bold text-white placeholder-slate-500 focus:outline-none focus:border-blue-400 w-56"
+          className="bg-well/40 border border-ink/10 rounded px-2.5 py-1.5 text-sm font-bold text-ink placeholder-dim focus:outline-none focus:border-accent w-56"
           style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '0.5px' }}
           placeholder="Tactic name…"
         />
 
-        <div className="flex items-center bg-black/30 rounded p-0.5 border border-white/10">
+        <div className="flex items-center bg-well/40 rounded p-0.5 border border-ink/10">
           <button
             onClick={() => togglePossessionMode('inPossession')}
             className={`px-2.5 py-1.5 text-[11px] font-extrabold rounded transition tracking-wider ${
-              possessionMode === 'inPossession' ? 'bg-blue-500 text-white shadow-[0_0_14px_rgba(96,165,250,0.4)]' : 'text-slate-300 hover:text-white'
+              possessionMode === 'inPossession' ? 'bg-accent text-acc-ink shadow-glow' : 'text-mute hover:text-ink'
             }`} style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>IN POSS.</button>
           <button
             onClick={() => togglePossessionMode('outOfPossession')}
             className={`px-2.5 py-1.5 text-[11px] font-extrabold rounded transition tracking-wider ${
-              possessionMode === 'outOfPossession' ? 'bg-rose-500 text-white' : 'text-slate-300 hover:text-white'
+              possessionMode === 'outOfPossession' ? 'bg-rose-500 text-ink' : 'text-mute hover:text-ink'
             }`} style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>OUT OF POSS.</button>
         </div>
 
-        <div className="flex items-center bg-black/30 rounded p-0.5 border border-white/10">
+        <div className="flex items-center bg-well/40 rounded p-0.5 border border-ink/10">
           {[
-            ['home', 'H', COLORS.home],
-            ['both', 'BOTH', '#e2e8f0'],
-            ['away', 'A', COLORS.away],
-          ].map(([key, label, bg]) => (
+            ['home', 'H', COLORS.home, COLORS.homeText],
+            ['both', 'BOTH', '#e2e8f0', '#0f172a'],
+            ['away', 'A', COLORS.away, COLORS.awayText],
+          ].map(([key, label, bg, fg]) => (
             <button key={key} onClick={() => setEditingTeam(key)}
               className="px-2 py-1.5 text-[11px] font-black rounded transition"
               style={{
                 fontFamily:'"Uni Sans Heavy", Oswald, sans-serif', letterSpacing:'1px',
                 background: editingTeam === key ? bg : 'transparent',
-                color: editingTeam === key ? (key === 'both' ? '#0f172a' : '#fff') : '#cbd5e1',
+                color: editingTeam === key ? fg : 'rgb(var(--mute-rgb))',
               }}>
               {label}
             </button>
@@ -2098,17 +2335,17 @@ function TacticsBuilder({ session, profile, signOut }) {
         </div>
 
         <select value={activePreset} onChange={(e) => loadPreset(e.target.value)}
-          className="bg-black/30 border border-white/10 rounded px-2 py-1.5 text-[11px] font-extrabold focus:outline-none focus:border-blue-400 cursor-pointer"
+          className="bg-well/40 border border-ink/10 rounded px-2 py-1.5 text-[11px] font-extrabold focus:outline-none focus:border-accent cursor-pointer"
           style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
-          {FORMATION_KEYS.map(k => <option key={k} value={k} className="bg-[#080d18]">{k}</option>)}
+          {FORMATION_KEYS.map(k => <option key={k} value={k} className="bg-s1">{k}</option>)}
         </select>
 
         {/* 2D / 3D toggle — large unique tab */}
-        <div className="flex items-center bg-black/40 rounded p-0.5 border border-blue-400/40 shadow-[0_0_14px_rgba(96,165,250,0.25)]">
+        <div className="flex items-center bg-well/50 rounded p-0.5 border border-accent/40 shadow-glow">
           <button
             onClick={() => setViewMode('2d')}
             className={`px-3 py-1.5 text-[11px] font-black tracking-wider rounded transition ${
-              viewMode === '2d' ? 'bg-blue-500 text-white shadow-[0_0_10px_rgba(96,165,250,0.5)]' : 'text-slate-300 hover:text-white'
+              viewMode === '2d' ? 'bg-accent text-acc-ink shadow-glow' : 'text-mute hover:text-ink'
             }`}
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
             ▱ 2D
@@ -2116,7 +2353,7 @@ function TacticsBuilder({ session, profile, signOut }) {
           <button
             onClick={() => setViewMode('3d')}
             className={`px-3 py-1.5 text-[11px] font-black tracking-wider rounded transition ${
-              viewMode === '3d' ? 'bg-blue-500 text-white shadow-[0_0_10px_rgba(96,165,250,0.5)]' : 'text-slate-300 hover:text-white'
+              viewMode === '3d' ? 'bg-accent text-acc-ink shadow-glow' : 'text-mute hover:text-ink'
             }`}
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
             ⛁ 3D
@@ -2124,44 +2361,44 @@ function TacticsBuilder({ session, profile, signOut }) {
         </div>
 
         <button onClick={mirrorTactic}
-          className="px-2.5 py-1.5 text-[11px] font-extrabold bg-white/5 hover:bg-white/10 border border-white/10 rounded transition"
+          className="px-2.5 py-1.5 text-[11px] font-extrabold bg-ink/5 hover:bg-ink/10 border border-ink/10 rounded transition"
           style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
           ⇄ MIRROR
         </button>
         <button onClick={() => setCompareMode(c => !c)}
           className={`px-2.5 py-1.5 text-[11px] font-extrabold border rounded transition ${
-            compareMode ? 'bg-blue-400/20 border-blue-400/40 text-blue-300' : 'bg-white/5 hover:bg-white/10 border-white/10'
+            compareMode ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-ink/5 hover:bg-ink/10 border-ink/10'
           }`} style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
           ⊟ COMPARE
         </button>
 
         <div className="ml-auto flex items-center gap-1.5">
           <button onClick={() => setShowDisplayOpts(true)}
-            className="px-2.5 py-1.5 text-[11px] font-extrabold bg-white/5 hover:bg-white/10 border border-white/10 rounded transition"
+            className="px-2.5 py-1.5 text-[11px] font-extrabold bg-ink/5 hover:bg-ink/10 border border-ink/10 rounded transition"
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
             👁 VISUAL DISPLAY SETTINGS
           </button>
           <button onClick={() => setShowTacticMgmt(true)}
-            className="px-2.5 py-1.5 text-[11px] font-extrabold bg-white/5 hover:bg-white/10 border border-white/10 rounded transition"
+            className="px-2.5 py-1.5 text-[11px] font-extrabold bg-ink/5 hover:bg-ink/10 border border-ink/10 rounded transition"
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
             ☰ TACTICS
           </button>
           <button onClick={undo}
-            className="px-2 py-1.5 text-[11px] font-bold bg-white/5 hover:bg-white/10 border border-white/10 rounded">↶</button>
+            className="px-2 py-1.5 text-[11px] font-bold bg-ink/5 hover:bg-ink/10 border border-ink/10 rounded">↶</button>
           <button onClick={redo}
-            className="px-2 py-1.5 text-[11px] font-bold bg-white/5 hover:bg-white/10 border border-white/10 rounded">↷</button>
+            className="px-2 py-1.5 text-[11px] font-bold bg-ink/5 hover:bg-ink/10 border border-ink/10 rounded">↷</button>
           <button onClick={exportPNG}
-            className="px-3 py-1.5 text-[11px] font-black bg-blue-500 hover:bg-blue-400 text-white rounded transition shadow-[0_0_12px_rgba(96,165,250,0.4)]"
+            className="px-3 py-1.5 text-[11px] font-black bg-accent hover:brightness-110 text-acc-ink rounded transition shadow-glow sheen"
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
             ⇩ EXPORT
           </button>
 
           {profile && (
-            <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-white/10">
+            <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-ink/10">
               <div className="flex flex-col text-right leading-tight pr-1">
-                <span className="text-[8px] font-extrabold tracking-[0.3em] text-slate-500"
+                <span className="text-[8px] font-extrabold tracking-[0.3em] text-dim"
                   style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>SIGNED IN</span>
-                <span className="text-[12px] font-extrabold text-blue-300 tracking-wide truncate max-w-[120px]"
+                <span className="text-[12px] font-extrabold text-accent tracking-wide truncate max-w-[120px]"
                   style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
                   @{profile.username}
                 </span>
@@ -2179,10 +2416,11 @@ function TacticsBuilder({ session, profile, signOut }) {
 
       <div className="flex flex-1 min-h-0">
         {/* TOOLBAR */}
-        <aside className="flex flex-col gap-1 p-2 border-r border-white/10 bg-[#080d18] w-14">
+        <aside className="flex flex-col gap-1 p-2 border-r border-ink/10 bg-s1 w-14 overflow-y-auto rise d1">
           {[
-            ['select', '✥', 'Select & drag'],
+            ['select', '✥', 'Select & drag (players, ball, shapes)'],
             ['arrow', '➤', 'Arrow tool (freehand)'],
+            ['shape', '▭', 'Rect / square object — hold Shift for a square'],
             ['zone', '▱', 'Zone shading'],
             ['text', 'T', 'Text label'],
             ['press', '!', 'Press trigger'],
@@ -2191,21 +2429,38 @@ function TacticsBuilder({ session, profile, signOut }) {
             <button key={t} onClick={() => setTool(t)} title={title}
               className={`w-10 h-10 rounded flex items-center justify-center text-base font-extrabold transition border ${
                 tool === t
-                  ? 'bg-blue-400/20 border-blue-400/55 text-blue-200 shadow-[0_0_12px_rgba(96,165,250,0.4)]'
-                  : 'bg-white/5 border-white/10 hover:bg-white/10 text-slate-300'
+                  ? 'bg-accent/20 border-accent/55 text-accent shadow-glow'
+                  : 'bg-ink/5 border-ink/10 hover:bg-ink/10 text-mute'
               }`}>
               {icon}
             </button>
           ))}
-          <div className="h-px bg-white/10 my-1" />
-          {['white','yellow','orange','blue'].map(c => (
+          <div className="h-px bg-ink/10 my-1" />
+          {/* Arrow line style — solid RUN vs dashed PASS */}
+          {[
+            ['solid', '━', 'RUN', 'Solid arrows — player runs'],
+            ['dashed', '╍', 'PASS', 'Dashed arrows — passes (animated)'],
+          ].map(([s, icon, tag, title]) => (
+            <button key={s} onClick={() => setArrowStyle(s)} title={title}
+              className={`w-10 h-8 rounded flex flex-col items-center justify-center leading-none transition border ${
+                arrowStyle === s
+                  ? 'bg-accent/20 border-accent/55 text-accent'
+                  : 'bg-ink/5 border-ink/10 hover:bg-ink/10 text-mute'
+              }`}>
+              <span className="text-[13px] -mb-0.5">{icon}</span>
+              <span className="text-[6.5px] font-black tracking-widest"
+                style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>{tag}</span>
+            </button>
+          ))}
+          <div className="h-px bg-ink/10 my-1" />
+          {ARROW_COLOR_KEYS.map(c => (
             <button key={c} onClick={() => setArrowColor(c)}
-              className={`w-10 h-7 rounded border-2 transition ${
-                arrowColor === c ? 'border-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.5)]' : 'border-white/10 hover:border-white/30'
+              className={`w-10 h-6 rounded border-2 transition ${
+                arrowColor === c ? 'border-accent shadow-glow scale-105' : 'border-ink/10 hover:border-ink/30'
               }`}
               style={{ background: ARROW_COLORS[c] }} title={`Color: ${c}`} />
           ))}
-          <div className="h-px bg-white/10 my-1" />
+          <div className="h-px bg-ink/10 my-1" />
           <button onClick={clearOverlays}
             className="w-10 h-10 rounded bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-[10px] font-extrabold tracking-wider"
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
@@ -2214,49 +2469,49 @@ function TacticsBuilder({ session, profile, signOut }) {
         </aside>
 
         {/* PITCH */}
-        <main className="flex-1 min-w-0 p-4 overflow-auto">
+        <main className="flex-1 min-w-0 p-4 overflow-auto rise d2">
           <div className="max-w-[1500px] mx-auto">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <div className="flex items-center gap-3">
-                <span className="text-[10px] text-slate-500 font-extrabold tracking-[0.25em]"
+                <span className="text-[10px] text-dim font-extrabold tracking-[0.25em]"
                   style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>SHAPE</span>
-                <span className={`font-black tracking-[0.15em] text-[15px] ${possessionMode === 'inPossession' ? 'text-blue-400' : 'text-rose-400'}`}
+                <span className={`font-black tracking-[0.15em] text-[15px] ${possessionMode === 'inPossession' ? 'text-accent' : 'text-rose-400'}`}
                   style={{fontFamily:'"Uni Sans Heavy", "Bebas Neue", sans-serif'}}>
                   {formationLabel || '—'}
                 </span>
                 {currentPhase >= 0 && (
-                  <span className="px-2 py-0.5 text-[10px] font-black bg-blue-400/20 text-blue-300 border border-blue-400/40 rounded tracking-widest"
+                  <span className="px-2 py-0.5 text-[10px] font-black bg-accent/20 text-accent border border-accent/40 rounded tracking-widest"
                     style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
                     PHASE {currentPhase + 1}
                   </span>
                 )}
                 {opts.fplMode && (
-                  <span className="px-2 py-0.5 text-[10px] font-black bg-blue-500/30 text-white border border-blue-400/40 rounded tracking-widest"
+                  <span className="px-2 py-0.5 text-[10px] font-black bg-accent/30 text-ink border border-accent/40 rounded tracking-widest"
                     style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
                     PL MODE
                   </span>
                 )}
                 {playing && (
-                  <span className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-black bg-rose-500/30 text-white border border-rose-400/50 rounded tracking-widest"
+                  <span className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-black bg-rose-500/30 text-ink border border-rose-400/50 rounded tracking-widest"
                     style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
                     <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
                     LIVE
                   </span>
                 )}
               </div>
-              <div className="text-[10px] text-slate-500 font-mono tracking-widest">
-                Drag · Click → side panel · Esc · Ctrl+Z
+              <div className="text-[10px] text-dim font-mono tracking-widest">
+                Drag · Click → side panel · Shift+box = square · Esc · Ctrl+Z
               </div>
             </div>
 
             {viewMode === '3d' ? (
               <ErrorBoundary>
                 <Suspense fallback={
-                  <div className="rounded-xl border border-white/10 bg-[#080d18] flex items-center justify-center"
+                  <div className="rounded-xl border border-ink/10 bg-s1 flex items-center justify-center"
                        style={{ height: 'calc(100vh - 160px)' }}>
                     <div className="text-center">
-                      <div className="w-10 h-10 mx-auto mb-3 border-3 border-white/10 border-t-blue-400 rounded-full animate-spin" />
-                      <div className="text-[10px] tracking-[0.4em] text-blue-300 font-display">LOADING 3D ENGINE</div>
+                      <div className="w-10 h-10 mx-auto mb-3 border-2 border-ink/10 border-t-accent rounded-full animate-spin" />
+                      <div className="text-[10px] tracking-[0.4em] text-accent font-display">LOADING 3D ENGINE</div>
                     </div>
                   </div>
                 }>
@@ -2280,7 +2535,7 @@ function TacticsBuilder({ session, profile, signOut }) {
             ) : compareMode ? (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div>
-                  <div className="text-[10px] font-black tracking-[0.3em] text-blue-400 mb-1.5 px-1"
+                  <div className="text-[10px] font-black tracking-[0.3em] text-accent mb-1.5 px-1"
                     style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>IN POSSESSION</div>
                   {renderPitch('inPossession', 'IN POSSESSION')}
                 </div>
@@ -2295,28 +2550,28 @@ function TacticsBuilder({ session, profile, signOut }) {
             )}
 
             {/* PHASE BAR */}
-            <div className="mt-4 p-3 rounded-xl bg-[#080d18] border border-white/10 flex items-center gap-3 flex-wrap"
+            <div className="mt-4 p-3 rounded-xl bg-s1 border border-ink/10 flex items-center gap-3 flex-wrap"
               style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03), 0 6px 24px rgba(0,0,0,0.4)' }}>
               <div className="flex items-center gap-1">
                 <button onClick={() => stepPhase(-1)} disabled={!phaseSavedCount}
-                  className="px-3 py-2 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-sm disabled:opacity-30">⏮</button>
+                  className="px-3 py-2 rounded bg-ink/5 hover:bg-ink/10 border border-ink/10 text-sm disabled:opacity-30">⏮</button>
                 <button
                   onClick={playing ? handlePause : handlePlay}
                   disabled={phaseSavedCount < 2}
                   className={`px-4 py-2 rounded text-[12px] font-black tracking-widest transition ${
-                    playing ? 'bg-rose-500 text-white' : 'bg-blue-500 text-white hover:bg-blue-400 shadow-[0_0_14px_rgba(96,165,250,0.4)]'
+                    playing ? 'bg-rose-500 text-white pulse-glow' : 'bg-accent text-acc-ink hover:brightness-110 shadow-glow sheen'
                   } disabled:opacity-30`}
                   style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
                   {playing ? '⏸ PAUSE' : '▶ PLAY'}
                 </button>
                 <button onClick={() => stepPhase(1)} disabled={!phaseSavedCount}
-                  className="px-3 py-2 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-sm disabled:opacity-30">⏭</button>
+                  className="px-3 py-2 rounded bg-ink/5 hover:bg-ink/10 border border-ink/10 text-sm disabled:opacity-30">⏭</button>
               </div>
 
-              <div className="h-8 w-px bg-white/10" />
+              <div className="h-8 w-px bg-ink/10" />
 
               <div className="flex items-center gap-1.5 flex-wrap max-w-[640px]">
-                <span className="text-[10px] text-slate-500 font-extrabold tracking-[0.2em] mr-1"
+                <span className="text-[10px] text-dim font-extrabold tracking-[0.2em] mr-1"
                   style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>PHASES</span>
                 {phases.map((ph, i) => {
                   const saved = !!ph;
@@ -2329,9 +2584,9 @@ function TacticsBuilder({ session, profile, signOut }) {
                         onContextMenu={(e) => { e.preventDefault(); if (saved) renamePhase(i); }}
                         title={saved ? `${phaseTitle} (right-click to rename)` : `Save current as Phase ${i+1}`}
                         className={`w-9 h-9 rounded text-xs font-black border transition ${
-                          active ? 'bg-blue-400 text-blue-950 border-blue-300 shadow-[0_0_14px_rgba(96,165,250,0.5)]'
-                                 : saved ? 'bg-blue-400/15 border-blue-400/40 text-blue-300 hover:bg-blue-400/25'
-                                         : 'bg-white/5 border-white/10 text-slate-500 hover:bg-white/10 hover:text-slate-300'
+                          active ? 'bg-accent text-acc-ink border-accent shadow-glow'
+                                 : saved ? 'bg-accent/15 border-accent/40 text-accent hover:bg-accent/25'
+                                         : 'bg-ink/5 border-ink/10 text-dim hover:bg-ink/10 hover:text-mute'
                         }`}
                         style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
                         {i+1}
@@ -2341,7 +2596,7 @@ function TacticsBuilder({ session, profile, signOut }) {
                         <button
                           onClick={() => renamePhase(i)}
                           title="Rename phase"
-                          className="text-[8.5px] mt-0.5 max-w-[70px] truncate text-slate-400 hover:text-blue-300 cursor-pointer leading-none"
+                          className="text-[8.5px] mt-0.5 max-w-[70px] truncate text-mute hover:text-accent cursor-pointer leading-none"
                           style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '0.5px' }}>
                           {phaseTitle.toUpperCase()}
                         </button>
@@ -2354,7 +2609,7 @@ function TacticsBuilder({ session, profile, signOut }) {
                 {phases[phases.length - 1] && (
                   <button onClick={addPhaseSlot}
                     title="Add another phase slot"
-                    className="w-9 h-9 rounded text-sm font-black border border-dashed border-blue-400/40 text-blue-300 hover:bg-blue-400/15 transition"
+                    className="w-9 h-9 rounded text-sm font-black border border-dashed border-accent/40 text-accent hover:bg-accent/15 transition"
                     style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
                     +
                   </button>
@@ -2364,7 +2619,7 @@ function TacticsBuilder({ session, profile, signOut }) {
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => savePhase(currentPhase >= 0 ? currentPhase : (phases.findIndex(p => !p) === -1 ? 0 : phases.findIndex(p => !p)))}
-                  className="px-2.5 py-1.5 text-[10px] font-black bg-blue-400/20 hover:bg-blue-400/30 border border-blue-400/40 text-blue-200 rounded tracking-widest"
+                  className="px-2.5 py-1.5 text-[10px] font-black bg-accent/20 hover:bg-accent/30 border border-accent/40 text-accent rounded tracking-widest"
                   style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
                   + SAVE PHASE
                 </button>
@@ -2377,7 +2632,7 @@ function TacticsBuilder({ session, profile, signOut }) {
                 )}
                 {currentPhase >= 0 && (
                   <button onClick={exitPhase}
-                    className="px-2.5 py-1.5 text-[10px] font-black bg-white/5 hover:bg-white/10 border border-white/10 rounded tracking-widest"
+                    className="px-2.5 py-1.5 text-[10px] font-black bg-ink/5 hover:bg-ink/10 border border-ink/10 rounded tracking-widest"
                     style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
                     ← EDIT
                   </button>
@@ -2388,9 +2643,9 @@ function TacticsBuilder({ session, profile, signOut }) {
         </main>
 
         {/* SIDE PANEL */}
-        <aside className={`border-l border-white/10 bg-[#080d18] transition-all overflow-auto ${showSidePanel ? 'w-[340px]' : 'w-12'}`}>
+        <aside className={`border-l border-ink/10 bg-s1 transition-all overflow-auto rise d3 ${showSidePanel ? 'w-[340px]' : 'w-12'}`}>
           <button onClick={() => setShowSidePanel(s => !s)}
-            className="w-full px-3 py-2.5 text-[10px] font-black tracking-[0.3em] text-slate-400 hover:text-white hover:bg-white/5 border-b border-white/10 flex items-center gap-2"
+            className="w-full px-3 py-2.5 text-[10px] font-black tracking-[0.3em] text-mute hover:text-ink hover:bg-ink/5 border-b border-ink/10 flex items-center gap-2"
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
             {showSidePanel ? '◀' : '▶'} {showSidePanel && 'PLAYER PANEL'}
           </button>
@@ -2399,44 +2654,44 @@ function TacticsBuilder({ session, profile, signOut }) {
             <div className="p-3 space-y-4">
               {sel ? (
                 <Fragment>
-                  <section className="p-3 rounded-lg bg-white/[0.03] border border-white/10 corner-tape">
+                  <section className="p-3 rounded-lg bg-ink/[0.03] border border-ink/10 corner-tape">
                     <div className="flex items-center gap-2 mb-3">
                       <span className="w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-black flex-shrink-0"
                         style={{
                           background: sel.team === 'home' ? COLORS.home : COLORS.away,
                           color: '#fff',
                           fontFamily: '"Uni Sans Heavy", Oswald, sans-serif',
-                          boxShadow: '0 0 14px rgba(96,165,250,0.25)',
+                          boxShadow: '0 0 14px rgba(215,255,60,0.25)',
                         }}>
                         {sel.label}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-[10px] text-slate-500 font-extrabold tracking-[0.2em]"
+                        <div className="text-[10px] text-dim font-extrabold tracking-[0.2em]"
                           style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
                           {sel.team === 'home' ? 'HOME' : 'AWAY'} · #{sel.number}
                         </div>
-                        <div className="text-sm font-extrabold text-white tracking-wide truncate"
+                        <div className="text-sm font-extrabold text-ink tracking-wide truncate"
                           style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
                           {sel.fpl ? sel.fpl.fullName : `Player ${sel.label}`}
                         </div>
                       </div>
                       <button onClick={() => setSelectedPlayer(null)}
-                        className="w-6 h-6 rounded bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white text-sm leading-none">×</button>
+                        className="w-6 h-6 rounded bg-ink/5 hover:bg-ink/15 text-mute hover:text-ink text-sm leading-none">×</button>
                     </div>
 
-                    <div className="text-[10px] font-extrabold text-blue-300 tracking-[0.25em] mb-1.5"
+                    <div className="text-[10px] font-extrabold text-accent tracking-[0.25em] mb-1.5"
                       style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>POSITION</div>
                     <PositionGrid current={sel.label} onPick={handlePositionPick} />
 
-                    <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-3">
+                    <div className="mt-3 pt-3 border-t border-ink/10 grid grid-cols-2 gap-3">
                       <div>
-                        <div className="text-[10px] text-slate-400 font-mono tracking-widest mb-1">SPEED <span className="text-blue-300">{sel.speed}</span></div>
+                        <div className="text-[10px] text-mute font-mono tracking-widest mb-1">SPEED <span className="text-accent">{sel.speed}</span></div>
                         <input type="range" min={1} max={10} value={sel.speed}
                           onChange={(e) => updateSelected({ speed: +e.target.value })}
-                          className="w-full accent-blue-400" />
+                          className="w-full accent-accent" />
                       </div>
                       <div>
-                        <div className="text-[10px] text-slate-400 font-mono tracking-widest mb-1">PRESS <span className="text-rose-300">{sel.press}</span></div>
+                        <div className="text-[10px] text-mute font-mono tracking-widest mb-1">PRESS <span className="text-rose-300">{sel.press}</span></div>
                         <input type="range" min={1} max={10} value={sel.press}
                           onChange={(e) => updateSelected({ press: +e.target.value })}
                           className="w-full accent-rose-500" />
@@ -2454,16 +2709,16 @@ function TacticsBuilder({ session, profile, signOut }) {
                   ) : (
                     <button
                       onClick={() => setOpts(o => ({ ...o, fplMode: true }))}
-                      className="w-full py-2.5 bg-blue-400/10 hover:bg-blue-400/20 border border-blue-400/30 text-blue-200 rounded text-[11px] font-extrabold tracking-wider"
+                      className="w-full py-2.5 bg-accent/10 hover:bg-accent/20 border border-accent/30 text-accent rounded text-[11px] font-extrabold tracking-wider"
                       style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
                       ENABLE PL MODE → ASSIGN REAL PLAYER
                     </button>
                   )}
                 </Fragment>
               ) : (
-                <section className="p-3 rounded-lg bg-white/[0.02] border border-dashed border-white/10 text-center">
+                <section className="p-3 rounded-lg bg-ink/[0.02] border border-dashed border-ink/10 text-center">
                   <div className="text-[24px] mb-1">⚽</div>
-                  <div className="text-[11px] text-slate-400 leading-snug">
+                  <div className="text-[11px] text-mute leading-snug">
                     Click a player on the pitch to edit their position, stats and assign a real Premier League player.
                   </div>
                 </section>
@@ -2471,9 +2726,9 @@ function TacticsBuilder({ session, profile, signOut }) {
 
               {/* CONCEPT PLAYBOOK — blurred */}
               <section className="relative">
-                <div className="text-[10px] font-extrabold tracking-[0.3em] text-blue-400 mb-2"
+                <div className="text-[10px] font-extrabold tracking-[0.3em] text-accent mb-2"
                   style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>CONCEPT PLAYBOOK</div>
-                <div className="relative rounded-lg overflow-hidden border border-white/10">
+                <div className="relative rounded-lg overflow-hidden border border-ink/10">
                   <div className="space-y-2 p-3" style={{ filter: 'blur(5px)', userSelect: 'none', pointerEvents: 'none' }}>
                     {[
                       ["Pep's 3-2-5 Build-Up", "GK + back-three. RB inverts into double pivot."],
@@ -2481,22 +2736,22 @@ function TacticsBuilder({ session, profile, signOut }) {
                       ["High Press 4-3-3", "Striker triggers on back-pass, fullbacks jump."],
                       ["Half-Space Overload", "Right-side combination, 10 finds the seam."],
                     ].map((c, i) => (
-                      <div key={i} className="p-3 rounded bg-white/[0.03] border border-white/10">
-                        <div className="text-sm font-black text-white"
+                      <div key={i} className="p-3 rounded bg-ink/[0.03] border border-ink/10">
+                        <div className="text-sm font-black text-ink"
                           style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>{c[0]}</div>
-                        <div className="text-[11px] text-slate-400 mt-0.5">{c[1]}</div>
+                        <div className="text-[11px] text-mute mt-0.5">{c[1]}</div>
                       </div>
                     ))}
                   </div>
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+                  <div className="absolute inset-0 flex items-center justify-center bg-well/50 backdrop-blur-[2px]">
                     <div className="text-center">
-                      <div className="text-[8px] font-extrabold text-blue-300 tracking-[0.4em] mb-1"
+                      <div className="text-[8px] font-extrabold text-accent tracking-[0.4em] mb-1"
                         style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>WORK IN PROGRESS</div>
                       <div className="text-2xl font-black shimmer-text"
                         style={{fontFamily:'"Uni Sans Heavy", "Bebas Neue", sans-serif', letterSpacing: '0.1em'}}>
                         COMING SOON
                       </div>
-                      <div className="text-[10px] text-slate-400 mt-2 max-w-[220px] mx-auto leading-tight">
+                      <div className="text-[10px] text-mute mt-2 max-w-[220px] mx-auto leading-tight">
                         Pre-built tactical concepts loading positions, arrows &amp; phases.
                       </div>
                     </div>
@@ -2515,21 +2770,23 @@ function TacticsBuilder({ session, profile, signOut }) {
                 }}
               />
 
-              <section className="text-[10px] text-slate-500 leading-relaxed border-t border-white/10 pt-3 font-mono">
-                <div className="font-extrabold text-slate-300 mb-1 tracking-[0.2em]"
+              <section className="text-[10px] text-dim leading-relaxed border-t border-ink/10 pt-3 font-mono">
+                <div className="font-extrabold text-mute mb-1 tracking-[0.2em]"
                   style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>GENERAL HOTKEYS</div>
                 <div>• Drag → reposition · Click → edit panel</div>
                 <div>• Right-click player → clear FPL assignment</div>
-                <div>• Arrow tool → freehand path</div>
+                <div>• Arrow tool → freehand path · <span className="text-accent">RUN/PASS</span> sets line style</div>
+                <div>• Shape tool → drag a box · <span className="text-accent">Shift</span> = perfect square</div>
+                <div>• Select tool → drag shapes to reposition them</div>
                 <div>• Right-click phase → rename</div>
                 <div>• Ctrl+Z undo · Esc deselect · Space play/pause</div>
-                <div className="font-extrabold text-slate-300 mb-1 mt-3 tracking-[0.2em]"
+                <div className="font-extrabold text-mute mb-1 mt-3 tracking-[0.2em]"
                   style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>3D MODE</div>
-                <div>• <span className="text-blue-300">LMB</span> → drag players · draw · click drawings to erase</div>
-                <div>• <span className="text-blue-300">Ctrl + LMB</span> drag → orbit camera</div>
-                <div>• <span className="text-blue-300">RMB</span> drag → orbit camera</div>
-                <div>• <span className="text-blue-300">Scroll</span> → zoom in / out</div>
-                <div>• <span className="text-blue-300">Middle drag</span> → dolly</div>
+                <div>• <span className="text-accent">LMB</span> → drag players · draw · click drawings to erase</div>
+                <div>• <span className="text-accent">Ctrl + LMB</span> drag → orbit camera</div>
+                <div>• <span className="text-accent">RMB</span> drag → orbit camera</div>
+                <div>• <span className="text-accent">Scroll</span> → zoom in / out</div>
+                <div>• <span className="text-accent">Middle drag</span> → dolly</div>
               </section>
             </div>
           )}

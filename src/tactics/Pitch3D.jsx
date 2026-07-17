@@ -177,7 +177,7 @@ const P_H = 68;
 // Match the 2D PHASE_DURATION so 3D phase animations are paced identically.
 const PHASE_DURATION_MS = 2400;
 
-const TEAM_COLORS = { home: '#2563eb', away: '#dc2626' };
+const TEAM_COLORS = { home: '#eef1e6', away: '#f43f5e' };
 
 // PITCH coords (0..1050, 0..680) ⇄ WORLD coords (-P_W/2..P_W/2, -P_H/2..P_H/2)
 const PITCH_W_PX = 1050;
@@ -207,7 +207,7 @@ function PitchGround() {
     const ctx = canvas.getContext('2d');
     const stripes = 12;
     for (let i = 0; i < stripes; i++) {
-      ctx.fillStyle = i % 2 === 0 ? '#1f5f30' : '#1d5a2d';
+      ctx.fillStyle = i % 2 === 0 ? '#1e6a3b' : '#1c6237';
       ctx.fillRect(i * (canvas.width / stripes), 0, canvas.width / stripes, canvas.height);
     }
     ctx.strokeStyle = 'rgba(255,255,255,0.85)';
@@ -478,7 +478,7 @@ function Player3D({ player, position, color, selected, fplMode, animating,
       {selected && (
         <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]}>
           <ringGeometry args={[0.8, 1.0, 32]} />
-          <meshBasicMaterial color="#60a5fa" transparent opacity={0.7} side={THREE.DoubleSide} />
+          <meshBasicMaterial color="#d7ff3c" transparent opacity={0.7} side={THREE.DoubleSide} />
         </mesh>
       )}
       {/* base ring */}
@@ -708,7 +708,7 @@ function PressMesh({ p, onClick }) {
     <group position={[wx, 0.06, wz]} onClick={onClick}>
       <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.7, 1.1, 32]} />
-        <meshBasicMaterial color="#dc2626" transparent opacity={0.85} side={THREE.DoubleSide} />
+        <meshBasicMaterial color="#f43f5e" transparent opacity={0.85} side={THREE.DoubleSide} />
       </mesh>
       <Html position={[0, 0.1, 0]} center>
         <div style={{
