@@ -60,6 +60,23 @@ const hexA = (hex, a) => {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 };
 
+// Pitch surface skins. `grass` is the default broadcast turf; `dark` is the
+// night-slate surface used by Dark Pitch mode.
+const PITCH_SKINS = {
+  grass: {
+    pitch: '#1e6a3b', pitchAlt: '#1c6237',
+    line: 'rgba(245,250,240,0.9)',
+    deck: '#0b0d08', frame: 'rgba(215,255,60,0.22)',
+    goalFill: 'rgba(255,255,255,0.18)',
+  },
+  dark: {
+    pitch: '#17191d', pitchAlt: '#141619',
+    line: 'rgba(226,232,240,0.5)',
+    deck: '#070809', frame: 'rgba(226,232,240,0.16)',
+    goalFill: 'rgba(255,255,255,0.10)',
+  },
+};
+
 // Positional-structure bands: each unit of a team gets a connecting line.
 const SHAPE_BANDS = [
   ['LB', 'CB', 'RB', 'LWB', 'RWB'],       // defence
@@ -67,6 +84,10 @@ const SHAPE_BANDS = [
   ['LW', 'ST', 'RW', 'CF'],               // attack
 ];
 const SHAPE_LINE_COLORS = { home: '#f4f6ef', away: '#ff4d6d' };
+
+// Balance Symmetry: mirrored role pairs, then central roles paired outside-in.
+const MIRROR_PAIRS = [['LB', 'RB'], ['LWB', 'RWB'], ['LM', 'RM'], ['LW', 'RW']];
+const CENTRAL_ROLES = ['GK', 'CB', 'CDM', 'CM', 'CAM', 'ST', 'CF'];
 
 // Premier League club primary colors — used to glow the ring around an FPL token.
 const PL_TEAM_COLORS = {
@@ -266,7 +287,7 @@ const fplPhotoUrl = (code) => `https://resources.premierleague.com/premierleague
 /* =============================================================
    PITCH LINES
    ============================================================= */
-function PitchLines({ showChannels, showDefLine, defLines, playing, animating }) {
+function PitchLines({ showChannels, showDefLine, defLines, playing, animating, skin = PITCH_SKINS.grass }) {
   // Smoothly translate the def-line group via CSS transform when animating
   // so it doesn't teleport between phases like x1/x2 attribute changes do.
   const lineTrans = animating ? `transform ${PHASE_DURATION}ms linear` : 'none';
@@ -275,7 +296,7 @@ function PitchLines({ showChannels, showDefLine, defLines, playing, animating })
       {Array.from({ length: 12 }).map((_, i) => (
         <rect key={i} x={i * (PITCH_W / 12)} y={0}
           width={PITCH_W / 12} height={PITCH_H}
-          fill={i % 2 === 0 ? COLORS.pitch : COLORS.pitchAlt} />
+          fill={i % 2 === 0 ? skin.pitch : skin.pitchAlt} />
       ))}
       <rect x={0} y={0} width={PITCH_W} height={PITCH_H} fill="url(#pitchVignette)" />
       {playing && (
@@ -283,24 +304,24 @@ function PitchLines({ showChannels, showDefLine, defLines, playing, animating })
           <animate attributeName="opacity" values="0.7;1;0.7" dur="1.6s" repeatCount="indefinite" />
         </rect>
       )}
-      <rect x={20} y={20} width={PITCH_W - 40} height={PITCH_H - 40} fill="none" stroke={COLORS.line} strokeWidth={2.5} />
-      <line x1={PITCH_W / 2} y1={20} x2={PITCH_W / 2} y2={PITCH_H - 20} stroke={COLORS.line} strokeWidth={2.5} />
-      <circle cx={PITCH_W / 2} cy={PITCH_H / 2} r={92} fill="none" stroke={COLORS.line} strokeWidth={2.5} />
-      <circle cx={PITCH_W / 2} cy={PITCH_H / 2} r={3} fill={COLORS.line} />
-      <rect x={20} y={PITCH_H / 2 - 200} width={165} height={400} fill="none" stroke={COLORS.line} strokeWidth={2.5} />
-      <rect x={PITCH_W - 185} y={PITCH_H / 2 - 200} width={165} height={400} fill="none" stroke={COLORS.line} strokeWidth={2.5} />
-      <rect x={20} y={PITCH_H / 2 - 90} width={55} height={180} fill="none" stroke={COLORS.line} strokeWidth={2.5} />
-      <rect x={PITCH_W - 75} y={PITCH_H / 2 - 90} width={55} height={180} fill="none" stroke={COLORS.line} strokeWidth={2.5} />
-      <rect x={5} y={PITCH_H / 2 - 36} width={15} height={72} fill="rgba(255,255,255,0.18)" stroke={COLORS.line} strokeWidth={2} />
-      <rect x={PITCH_W - 20} y={PITCH_H / 2 - 36} width={15} height={72} fill="rgba(255,255,255,0.18)" stroke={COLORS.line} strokeWidth={2} />
-      <circle cx={130} cy={PITCH_H / 2} r={3} fill={COLORS.line} />
-      <circle cx={PITCH_W - 130} cy={PITCH_H / 2} r={3} fill={COLORS.line} />
-      <path d={`M 185 ${PITCH_H / 2 - 50} A 50 50 0 0 1 185 ${PITCH_H / 2 + 50}`} fill="none" stroke={COLORS.line} strokeWidth={2.5} />
-      <path d={`M ${PITCH_W - 185} ${PITCH_H / 2 - 50} A 50 50 0 0 0 ${PITCH_W - 185} ${PITCH_H / 2 + 50}`} fill="none" stroke={COLORS.line} strokeWidth={2.5} />
+      <rect x={20} y={20} width={PITCH_W - 40} height={PITCH_H - 40} fill="none" stroke={skin.line} strokeWidth={2.5} />
+      <line x1={PITCH_W / 2} y1={20} x2={PITCH_W / 2} y2={PITCH_H - 20} stroke={skin.line} strokeWidth={2.5} />
+      <circle cx={PITCH_W / 2} cy={PITCH_H / 2} r={92} fill="none" stroke={skin.line} strokeWidth={2.5} />
+      <circle cx={PITCH_W / 2} cy={PITCH_H / 2} r={3} fill={skin.line} />
+      <rect x={20} y={PITCH_H / 2 - 200} width={165} height={400} fill="none" stroke={skin.line} strokeWidth={2.5} />
+      <rect x={PITCH_W - 185} y={PITCH_H / 2 - 200} width={165} height={400} fill="none" stroke={skin.line} strokeWidth={2.5} />
+      <rect x={20} y={PITCH_H / 2 - 90} width={55} height={180} fill="none" stroke={skin.line} strokeWidth={2.5} />
+      <rect x={PITCH_W - 75} y={PITCH_H / 2 - 90} width={55} height={180} fill="none" stroke={skin.line} strokeWidth={2.5} />
+      <rect x={5} y={PITCH_H / 2 - 36} width={15} height={72} fill={skin.goalFill} stroke={skin.line} strokeWidth={2} />
+      <rect x={PITCH_W - 20} y={PITCH_H / 2 - 36} width={15} height={72} fill={skin.goalFill} stroke={skin.line} strokeWidth={2} />
+      <circle cx={130} cy={PITCH_H / 2} r={3} fill={skin.line} />
+      <circle cx={PITCH_W - 130} cy={PITCH_H / 2} r={3} fill={skin.line} />
+      <path d={`M 185 ${PITCH_H / 2 - 50} A 50 50 0 0 1 185 ${PITCH_H / 2 + 50}`} fill="none" stroke={skin.line} strokeWidth={2.5} />
+      <path d={`M ${PITCH_W - 185} ${PITCH_H / 2 - 50} A 50 50 0 0 0 ${PITCH_W - 185} ${PITCH_H / 2 + 50}`} fill="none" stroke={skin.line} strokeWidth={2.5} />
       {[[20,20],[PITCH_W-20,20],[20,PITCH_H-20],[PITCH_W-20,PITCH_H-20]].map(([cx,cy], i) => (
         <path key={i}
           d={`M ${cx + (cx === 20 ? 10 : -10)} ${cy} A 10 10 0 0 ${cx === 20 ? (cy === 20 ? 1 : 0) : (cy === 20 ? 0 : 1)} ${cx} ${cy + (cy === 20 ? 10 : -10)}`}
-          fill="none" stroke={COLORS.line} strokeWidth={2} />
+          fill="none" stroke={skin.line} strokeWidth={2} />
       ))}
 
       {showChannels && [136, 272, 408, 544].map((y, i) => (
@@ -511,7 +532,7 @@ function PlayerToken({
    the coordinate map with rAF (linear, matching the tokens' easing)
    so the lines glide in lockstep with the players.
    ============================================================= */
-function ShapeLines({ players, positions, editingTeam, animating }) {
+function ShapeLines({ players, positions, editingTeam, animating, tool, onBandPointerDown }) {
   const [tweened, setTweened] = useState(positions);
   const curRef = useRef(positions);   // what's currently on screen
   const rafRef = useRef(null);
@@ -545,32 +566,110 @@ function ShapeLines({ players, positions, editingTeam, animating }) {
   }, [positions, animating]);
 
   const teams = editingTeam === 'both' ? ['home', 'away'] : [editingTeam];
+  const at = (p) => tweened[p.id];
+  const has = (p) => { const q = at(p); return q && q.x != null; };
+  // nearest partner by straight-line distance
+  const nearest = (from, list) => {
+    let best = null, bd = Infinity;
+    for (const cand of list) {
+      const a = at(from), b = at(cand);
+      if (!a || !b || a.x == null || b.x == null) continue;
+      const dd = (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+      if (dd < bd) { bd = dd; best = cand; }
+    }
+    return best;
+  };
+
   return (
-    <g pointerEvents="none">
-      {teams.map(team => SHAPE_BANDS.map((band, bi) => {
-        const pts = players
-          .filter(p => p.team === team && band.includes(p.label))
-          .map(p => tweened[p.id])
-          .filter(p => p && p.x != null)
-          .sort((a, b) => a.y - b.y);
-        if (pts.length < 2) return null;
-        const d = pts.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
+    <g>
+      {teams.map(team => {
+        const squad = players.filter(p => p.team === team && has(p));
+        const byLabel = (...labels) => squad.filter(p => labels.includes(p.label));
         const c = SHAPE_LINE_COLORS[team];
+
+        /* ── Progression linkers (faint) ─────────────────────────
+           Fullbacks → wide mids, and centre-backs → the pivot
+           (CDMs, or CMs when the shape has no CDM). */
+        const links = [];
+        const pushLink = (a, b) => {
+          if (!a || !b) return;
+          links.push({ key: `${a.id}-${b.id}`, a: at(a), b: at(b) });
+        };
+        byLabel('LB', 'LWB').forEach(fb => pushLink(fb, nearest(fb, byLabel('LM'))));
+        byLabel('RB', 'RWB').forEach(fb => pushLink(fb, nearest(fb, byLabel('RM'))));
+        const pivot = byLabel('CDM').length ? byLabel('CDM') : byLabel('CM');
+        byLabel('CB').forEach(cb => pushLink(cb, nearest(cb, pivot)));
+
+        /* ── CAM → ST: the CAM stays in the midfield band but also
+           links up to the striker it plays off. ─────────────────── */
+        const camLinks = [];
+        byLabel('CAM').forEach(cam => {
+          const st = nearest(cam, byLabel('ST', 'CF'));
+          if (st) camLinks.push({ key: `${cam.id}-${st.id}`, a: at(cam), b: at(st) });
+        });
+
         return (
-          <g key={`${team}-${bi}`} opacity={0.9}>
-            {/* soft glow underlay + crisp core line */}
-            <path d={d} fill="none" stroke={c} strokeWidth={7}
-              strokeLinejoin="round" strokeLinecap="round" opacity={0.16} />
-            <path d={d} fill="none" stroke={c} strokeWidth={2.25}
-              strokeLinejoin="round" strokeLinecap="round" opacity={0.8} />
-            {/* diamond studs at each joint */}
-            {pts.map((p, i) => (
-              <rect key={i} x={-3} y={-3} width={6} height={6} fill={c} opacity={0.9}
-                transform={`translate(${p.x}, ${p.y}) rotate(45)`} />
-            ))}
+          <g key={team}>
+            {/* faint progression linkers — under the unit lines */}
+            <g pointerEvents="none" opacity={0.5}>
+              {links.map(l => (
+                <line key={l.key} x1={l.a.x} y1={l.a.y} x2={l.b.x} y2={l.b.y}
+                  stroke={c} strokeWidth={1.4} strokeDasharray="3 7"
+                  strokeLinecap="round" opacity={0.42} />
+              ))}
+            </g>
+
+            {/* CAM → ST connection */}
+            <g pointerEvents="none">
+              {camLinks.map(l => (
+                <Fragment key={l.key}>
+                  <line x1={l.a.x} y1={l.a.y} x2={l.b.x} y2={l.b.y}
+                    stroke={c} strokeWidth={6} strokeLinecap="round" opacity={0.13} />
+                  <line x1={l.a.x} y1={l.a.y} x2={l.b.x} y2={l.b.y}
+                    stroke={c} strokeWidth={2} strokeLinecap="round" opacity={0.7} />
+                </Fragment>
+              ))}
+            </g>
+
+            {/* unit bands — draggable as a whole with the select tool */}
+            {SHAPE_BANDS.map((band, bi) => {
+              const unit = squad
+                .filter(p => band.includes(p.label))
+                .sort((a, b) => at(a).y - at(b).y);
+              if (unit.length < 2) return null;
+              const pts = unit.map(at);
+              const d = pts.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
+              const ids = unit.map(p => p.id);
+              const grabbable = tool === 'select' && !!onBandPointerDown;
+              return (
+                <g key={`${team}-${bi}`} opacity={0.9}>
+                  {/* soft glow underlay + crisp core line */}
+                  <path d={d} fill="none" stroke={c} strokeWidth={7}
+                    strokeLinejoin="round" strokeLinecap="round" opacity={0.16}
+                    pointerEvents="none" />
+                  <path d={d} fill="none" stroke={c} strokeWidth={2.25}
+                    strokeLinejoin="round" strokeLinecap="round" opacity={0.8}
+                    pointerEvents="none" />
+                  {/* invisible fat hit-strip: grab the line, move the unit */}
+                  <path d={d} fill="none" stroke="transparent" strokeWidth={16}
+                    strokeLinejoin="round" strokeLinecap="round"
+                    pointerEvents={grabbable ? 'stroke' : 'none'}
+                    style={grabbable ? { cursor: 'grab' } : undefined}
+                    onPointerDown={grabbable ? (e) => onBandPointerDown(e, ids) : undefined}>
+                    {grabbable && <title>Drag to move this whole unit</title>}
+                  </path>
+                  {/* diamond studs at each joint */}
+                  {pts.map((p, i) => (
+                    <rect key={i} x={-3} y={-3} width={6} height={6} fill={c} opacity={0.9}
+                      pointerEvents="none"
+                      transform={`translate(${p.x}, ${p.y}) rotate(45)`} />
+                  ))}
+                </g>
+              );
+            })}
           </g>
         );
-      }))}
+      })}
     </g>
   );
 }
@@ -1037,7 +1136,8 @@ function DisplayOptionsModal({ open, onClose, opts, setOpts, theme, setTheme }) 
       </div>
       <div className="space-y-2 max-h-[46vh] overflow-y-auto pr-1">
         {[
-          ['showShapeLines',   'Positional Structure Lines', 'Connect each unit — defence, midfield, attack — with team shape lines that glide with the players (2D).'],
+          ['showShapeLines',   'Positional Structure Lines', 'Connect each unit — defence, midfield, attack — plus CAM→ST and faint fullback / centre-back progression linkers. Drag a line to move the whole unit (2D).'],
+          ['darkPitch',        'Dark Pitch Surface',         'Swap the green turf for night slate. Selecting the Dark theme turns this on automatically.'],
           ['fplMode',          'Premier League Player Mode', 'Click any token to assign a real PL player. Photo + name appear on the token.'],
           ['showStats',        'Player Stat Badges',         'Speed / press intensity badge under each token.'],
           ['showMovementArrows','Movement Intent Arrows',    'Per-player movement vector (set in player editor).'],
@@ -1194,7 +1294,15 @@ function TacticsBuilder({ session, profile, signOut }) {
   const [phases, setPhases] = useState([null, null, null, null]);
   const [currentPhase, setCurrentPhase] = useState(-1);
   const [playing, setPlaying] = useState(false);
-  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  // Multi-select: Shift+click adds/removes. The LAST entry is the "primary"
+  // — it's what the side-panel editor targets. setSelectedPlayer(id) keeps
+  // the old single-select semantics for every existing call site.
+  const [selectedIds, setSelectedIds] = useState([]);
+  const selectedPlayer = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
+  const setSelectedPlayer = useCallback((id) => setSelectedIds(id ? [id] : []), []);
+  const toggleSelected = useCallback((id) => setSelectedIds(prev => (
+    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+  )), []);
   const [tool, setTool] = useState('select');
   const [arrowColor, setArrowColor] = useState('white');
   // 'solid' = run, 'dashed' = pass — stored per arrow when drawn.
@@ -1213,7 +1321,7 @@ function TacticsBuilder({ session, profile, signOut }) {
   const [drawingZone, setDrawingZone] = useState(null);
   const [drawingShape, setDrawingShape] = useState(null);
   const [showSidePanel, setShowSidePanel] = useState(true);
-  const [draggingId, setDraggingId] = useState(null);  // token pickup scale
+  const [draggingIds, setDraggingIds] = useState([]);  // token pickup scale
   const [trails, setTrails] = useState([]);
   const [activePreset, setActivePreset] = useState('4-3-3');
   const [compareMode, setCompareMode] = useState(false);
@@ -1234,6 +1342,7 @@ function TacticsBuilder({ session, profile, signOut }) {
     fplMode: false,
     showBall: true,
     showShapeLines: true,   // positional-structure unit lines (2D)
+    darkPitch: false,       // night-slate turf instead of green
     vertical: false,        // up-and-down stadium orientation
     customStadium: false,   // 3D-only: use the user-supplied .dae model
   });
@@ -1272,6 +1381,13 @@ function TacticsBuilder({ session, profile, signOut }) {
       else mq.removeListener(onChange);
     };
   }, [theme]);
+
+  // Picking the Dark theme darkens the pitch surface too; any other theme
+  // restores grass. Users can still flip Dark Pitch on its own afterwards.
+  const chooseTheme = useCallback((id) => {
+    setTheme(id);
+    setOpts(o => ({ ...o, darkPitch: id === 'dark' }));
+  }, []);
 
   const svgRef = useRef(null);
   const dragRef = useRef(null);
@@ -1401,6 +1517,19 @@ function TacticsBuilder({ session, profile, signOut }) {
     }
   };
 
+  // Write absolute positions for many players at once — into the open phase
+  // when there is one, otherwise into the base possession shape.
+  const applyPositions = (map) => {
+    if (!map || !Object.keys(map).length) return;
+    if (currentPhase >= 0) {
+      setPhases(prev => prev.map((ph, i) =>
+        i === currentPhase ? { ...(ph || {}), ...map } : ph));
+    } else {
+      setPlayers(prev => prev.map(p => map[p.id]
+        ? { ...p, pos: { ...p.pos, [possessionMode]: map[p.id] } } : p));
+    }
+  };
+
   const defLines = useMemo(() => {
     const positions = displayedPositions;
     const homeDefs = players.filter(p => p.team === 'home' && p.label !== 'GK');
@@ -1447,15 +1576,35 @@ function TacticsBuilder({ session, profile, signOut }) {
   };
 
   /* ── PURE-coordinate handlers (called by both 2D and 3D views) ── */
-  const startPlayerDrag = (id, pt) => {
+  // Moves any number of players together. The delta is clamped against the
+  // group's bounding box so the shape never distorts at the touchline.
+  const startGroupDrag = (ids, pt) => {
+    if (playing || tool !== 'select') return;
+    const orig = {};
+    for (const id of ids) {
+      const c = displayedPositions[id];
+      if (c) orig[id] = { x: c.x, y: c.y };
+    }
+    const list = Object.keys(orig);
+    if (!list.length) return;
+    dragRef.current = { type: 'group', ids: list, orig, start: pt };
+    setDraggingIds(list);
+    pushHistory();
+  };
+
+  const startPlayerDrag = (id, pt, additive = false) => {
     if (playing) return;
     if (tool !== 'select') return;
-    const cur = displayedPositions[id];
-    if (!cur) return;
-    dragRef.current = { type: 'player', id, offset: { x: pt.x - cur.x, y: pt.y - cur.y }, moved: false };
+    if (!displayedPositions[id]) return;
+    // Shift+click toggles membership instead of starting a drag.
+    if (additive) { toggleSelected(id); return; }
+    // Grabbing a member of a multi-selection moves the whole selection.
+    if (selectedIds.length > 1 && selectedIds.includes(id)) {
+      startGroupDrag(selectedIds, pt);
+      return;
+    }
     setSelectedPlayer(id);
-    setDraggingId(id);
-    pushHistory();
+    startGroupDrag([id], pt);
   };
   const startBallDrag = (pt) => {
     if (playing) return;
@@ -1491,17 +1640,18 @@ function TacticsBuilder({ session, profile, signOut }) {
   const continueDragOrDraw = (pt, shiftKey = false) => {
     if (!dragRef.current) return;
     const d = dragRef.current;
-    if (d.type === 'player') {
-      d.moved = true;
-      const nx = clamp(pt.x - d.offset.x, PLAYER_R + 4, PITCH_W - PLAYER_R - 4);
-      const ny = clamp(pt.y - d.offset.y, PLAYER_R + 4, PITCH_H - PLAYER_R - 4);
-      if (currentPhase >= 0) {
-        setPhases(prev => prev.map((ph, i) =>
-          i === currentPhase ? { ...(ph || {}), [d.id]: { x: nx, y: ny } } : ph));
-      } else {
-        setPlayers(prev => prev.map(p => p.id === d.id
-          ? { ...p, pos: { ...p.pos, [possessionMode]: { x: nx, y: ny } } } : p));
-      }
+    if (d.type === 'group') {
+      const xs = d.ids.map(id => d.orig[id].x);
+      const ys = d.ids.map(id => d.orig[id].y);
+      const lo = PLAYER_R + 4;
+      const hiX = PITCH_W - PLAYER_R - 4;
+      const hiY = PITCH_H - PLAYER_R - 4;
+      // one delta for everyone, bounded by the extremes of the group
+      const dx = clamp(pt.x - d.start.x, lo - Math.min(...xs), hiX - Math.max(...xs));
+      const dy = clamp(pt.y - d.start.y, lo - Math.min(...ys), hiY - Math.max(...ys));
+      const map = {};
+      for (const id of d.ids) map[id] = { x: d.orig[id].x + dx, y: d.orig[id].y + dy };
+      applyPositions(map);
     } else if (d.type === 'ball') {
       const nx = clamp(pt.x - d.offset.x, BALL_R + 4, PITCH_W - BALL_R - 4);
       const ny = clamp(pt.y - d.offset.y, BALL_R + 4, PITCH_H - BALL_R - 4);
@@ -1561,7 +1711,17 @@ function TacticsBuilder({ session, profile, signOut }) {
     if (tool !== 'select') return;
     e.stopPropagation(); e.preventDefault();
     const svg = svgRef.current;
-    startPlayerDrag(id, getPitchPoint(e));
+    startPlayerDrag(id, getPitchPoint(e), e.shiftKey);
+    if (svg?.setPointerCapture) { try { svg.setPointerCapture(e.pointerId); } catch {} }
+  };
+
+  // Grab a positional-structure line → move that entire unit.
+  const beginDragBand = (e, ids) => {
+    if (playing || tool !== 'select') return;
+    e.stopPropagation(); e.preventDefault();
+    setSelectedIds(ids);
+    startGroupDrag(ids, getPitchPoint(e));
+    const svg = svgRef.current;
     if (svg?.setPointerCapture) { try { svg.setPointerCapture(e.pointerId); } catch {} }
   };
 
@@ -1638,7 +1798,7 @@ function TacticsBuilder({ session, profile, signOut }) {
       setDrawingShape(null);
     }
     dragRef.current = null;
-    setDraggingId(null);
+    setDraggingIds([]);
   };
   // 2D wrapper for SVG onPointerUp/onPointerLeave
   const onPointerUp = () => endDragOrDraw();
@@ -1739,6 +1899,49 @@ function TacticsBuilder({ session, profile, signOut }) {
       return out;
     }));
   };
+  /* ── Balance symmetry ──────────────────────────────────────────
+     Squares the shape up about the pitch's long axis: every mirrored
+     role pair (LB/RB, LM/RM, LW/RW, LWB/RWB) is pulled to a shared
+     depth and equal offset from the centre line. Central roles pair
+     outside-in — CB with CB, ST with ST — and an odd one out is
+     centred. Only the team(s) currently being edited are touched. */
+  const balanceSymmetry = () => {
+    pushHistory(); triggerAnimation();
+    const mid = PITCH_H / 2;
+    const teams = editingTeam === 'both' ? ['home', 'away'] : [editingTeam];
+    const next = {};
+    const posOf = (p) => displayedPositions[p.id] || p.pos[possessionMode];
+    // `a` takes the left slot (small y), `b` the right (large y)
+    const symPair = (a, b) => {
+      const pa = posOf(a), pb = posOf(b);
+      const x = (pa.x + pb.x) / 2;
+      const dev = (Math.abs(mid - pa.y) + Math.abs(pb.y - mid)) / 2;
+      next[a.id] = { x, y: mid - dev };
+      next[b.id] = { x, y: mid + dev };
+    };
+
+    for (const team of teams) {
+      const squad = players.filter(p => p.team === team);
+      const byY = (list) => [...list].sort((m, n) => posOf(m).y - posOf(n).y);
+
+      for (const [L, R] of MIRROR_PAIRS) {
+        const ls = byY(squad.filter(p => p.label === L));
+        const rs = byY(squad.filter(p => p.label === R));
+        const n = Math.min(ls.length, rs.length);
+        for (let i = 0; i < n; i++) symPair(ls[i], rs[rs.length - 1 - i]);
+      }
+      for (const label of CENTRAL_ROLES) {
+        const list = byY(squad.filter(p => p.label === label));
+        for (let i = 0, j = list.length - 1; i < j; i++, j--) symPair(list[i], list[j]);
+        if (list.length % 2 === 1) {
+          const m = list[(list.length - 1) / 2];
+          next[m.id] = { x: posOf(m).x, y: mid };
+        }
+      }
+    }
+    applyPositions(next);
+  };
+
   const clearOverlays = () => {
     pushHistory();
     if (currentPhase >= 0) {
@@ -1989,6 +2192,7 @@ function TacticsBuilder({ session, profile, signOut }) {
   };
 
   const adSlots = useMemo(() => buildAdSlots(DEFAULT_ADS), []);
+  const skin = opts.darkPitch ? PITCH_SKINS.dark : PITCH_SKINS.grass;
 
   /* ── Pitch render ────────────────────────────────────────── */
   const renderPitch = (mode, label) => {
@@ -2027,7 +2231,7 @@ function TacticsBuilder({ session, profile, signOut }) {
             : 'w-full h-auto select-none touch-none rounded-xl border border-ink/10 pitch-clip'
         }
         style={{
-          background: 'radial-gradient(800px 400px at 50% 0%, rgba(215,255,60,0.10), transparent 70%), #0b0d08',
+          background: `radial-gradient(800px 400px at 50% 0%, rgba(215,255,60,0.10), transparent 70%), ${skin.deck}`,
           boxShadow: '0 30px 80px rgba(0,0,0,0.55), 0 0 60px rgba(215,255,60,0.08)',
           ...(opts.vertical ? verticalSize : {}),
           cursor:
@@ -2111,7 +2315,7 @@ function TacticsBuilder({ session, profile, signOut }) {
             is true we rotate 90° clockwise around the center of the original
             viewBox; the swapped viewBox above keeps the result in frame. */}
         <g transform={opts.vertical ? `rotate(90 ${cx} ${cy})` : undefined}>
-        <rect x={VB_X} y={VB_Y} width={VB_W} height={VB_H} fill="#0b0d08" />
+        <rect x={VB_X} y={VB_Y} width={VB_W} height={VB_H} fill={skin.deck} />
         <rect x={VB_X + 4} y={VB_Y + 4} width={VB_W - 8} height={VB_H - 8}
           fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
 
@@ -2128,9 +2332,9 @@ function TacticsBuilder({ session, profile, signOut }) {
         )}
 
         <rect x={-8} y={-8} width={PITCH_W + 16} height={PITCH_H + 16}
-          fill="none" stroke="rgba(215,255,60,0.22)" strokeWidth={2} rx={4} />
+          fill="none" stroke={skin.frame} strokeWidth={2} rx={4} />
 
-        <PitchLines showChannels={opts.showChannels} showDefLine={opts.showDefLine} defLines={defLines} playing={playing} animating={animating} />
+        <PitchLines showChannels={opts.showChannels} showDefLine={opts.showDefLine} defLines={defLines} playing={playing} animating={animating} skin={skin} />
 
         {/* Subtle grass-nap pattern over the pitch */}
         <rect x={0} y={0} width={PITCH_W} height={PITCH_H}
@@ -2174,7 +2378,9 @@ function TacticsBuilder({ session, profile, signOut }) {
         {/* POSITIONAL STRUCTURE — unit lines under drawings & tokens */}
         {opts.showShapeLines && (
           <ShapeLines players={players} positions={positions}
-            editingTeam={editingTeam} animating={animating} />
+            editingTeam={editingTeam} animating={animating}
+            tool={tool}
+            onBandPointerDown={mode === possessionMode ? beginDragBand : undefined} />
         )}
 
         {live.zones.map(z => (
@@ -2240,8 +2446,8 @@ function TacticsBuilder({ session, profile, signOut }) {
                 player={p}
                 x={positions[p.id].x}
                 y={positions[p.id].y}
-                selected={selectedPlayer === p.id}
-                dragging={draggingId === p.id}
+                selected={selectedIds.includes(p.id)}
+                dragging={draggingIds.includes(p.id)}
                 animating={animating}
                 showStats={opts.showStats}
                 showMovementArrows={opts.showMovementArrows}
@@ -2364,6 +2570,12 @@ function TacticsBuilder({ session, profile, signOut }) {
           className="px-2.5 py-1.5 text-[11px] font-extrabold bg-ink/5 hover:bg-ink/10 border border-ink/10 rounded transition"
           style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
           ⇄ MIRROR
+        </button>
+        <button onClick={balanceSymmetry}
+          title="Square the shape up — mirrored roles (LB/RB, LM/RM, LW/RW…) get equal depth and equal offset from the centre line"
+          className="px-2.5 py-1.5 text-[11px] font-extrabold bg-ink/5 hover:bg-ink/10 border border-ink/10 rounded transition"
+          style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
+          ⚖ BALANCE SYMMETRY
         </button>
         <button onClick={() => setCompareMode(c => !c)}
           className={`px-2.5 py-1.5 text-[11px] font-extrabold border rounded transition ${
@@ -2652,6 +2864,24 @@ function TacticsBuilder({ session, profile, signOut }) {
 
           {showSidePanel && (
             <div className="p-3 space-y-4">
+              {selectedIds.length > 1 && (
+                <section className="p-2.5 rounded-lg bg-accent/10 border border-accent/35 flex items-center gap-2">
+                  <span className="text-[15px] font-black text-accent"
+                    style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
+                    {selectedIds.length}
+                  </span>
+                  <div className="flex-1 min-w-0 leading-tight">
+                    <div className="text-[10px] font-extrabold text-accent tracking-[0.2em]"
+                      style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>PLAYERS SELECTED</div>
+                    <div className="text-[10px] text-mute">Drag any one to move them together.</div>
+                  </div>
+                  <button onClick={() => setSelectedIds([])}
+                    className="px-2 py-1 text-[9px] font-extrabold bg-ink/5 hover:bg-ink/15 border border-ink/10 rounded tracking-wider"
+                    style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
+                    CLEAR
+                  </button>
+                </section>
+              )}
               {sel ? (
                 <Fragment>
                   <section className="p-3 rounded-lg bg-ink/[0.03] border border-ink/10 corner-tape">
@@ -2774,6 +3004,8 @@ function TacticsBuilder({ session, profile, signOut }) {
                 <div className="font-extrabold text-mute mb-1 tracking-[0.2em]"
                   style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>GENERAL HOTKEYS</div>
                 <div>• Drag → reposition · Click → edit panel</div>
+                <div>• <span className="text-accent">Shift+click</span> players → multi-select · drag any one to move them together</div>
+                <div>• Drag a <span className="text-accent">structure line</span> → move that whole unit</div>
                 <div>• Right-click player → clear FPL assignment</div>
                 <div>• Arrow tool → freehand path · <span className="text-accent">RUN/PASS</span> sets line style</div>
                 <div>• Shape tool → drag a box · <span className="text-accent">Shift</span> = perfect square</div>
@@ -2797,7 +3029,7 @@ function TacticsBuilder({ session, profile, signOut }) {
         open={showDisplayOpts}
         onClose={() => setShowDisplayOpts(false)}
         opts={opts} setOpts={setOpts}
-        theme={theme} setTheme={setTheme}
+        theme={theme} setTheme={chooseTheme}
       />
       <TacticManagementModal
         open={showTacticMgmt}
