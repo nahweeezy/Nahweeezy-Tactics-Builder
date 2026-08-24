@@ -201,6 +201,11 @@ html[data-theme="light"] .app-shell::after { opacity: 0.035; }
   );
 }
 
+/* Perimeter ad boards — native SVG so the board still rasterises for PNG
+   export (an SVG containing foreignObject taints the export canvas). */
+.ad-board { cursor: pointer; transition: filter 0.15s; }
+.ad-board:hover { filter: brightness(1.18); }
+
 .corner-tape { position: relative; }
 .corner-tape::before {
   content: '';

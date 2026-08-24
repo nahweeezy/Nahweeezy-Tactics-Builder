@@ -4,6 +4,7 @@ import { track } from './analytics';
 import CommunityTactics from './community/CommunityTactics';
 import { supabase } from './supabase';
 import ErrorBoundary from './ErrorBoundary';
+import { loadFaces, searchFaces, nationsFor, faceUrl, ageFrom } from './faces';
 // Lazy-loaded so the ~1 MB Three.js bundle is only fetched when the user
 // switches to 3D mode.
 const Pitch3D = lazy(() => import('./Pitch3D'));
@@ -89,16 +90,6 @@ const SHAPE_LINE_COLORS = { home: '#f4f6ef', away: '#ff4d6d' };
 const MIRROR_PAIRS = [['LB', 'RB'], ['LWB', 'RWB'], ['LM', 'RM'], ['LW', 'RW']];
 const CENTRAL_ROLES = ['GK', 'CB', 'CDM', 'CM', 'CAM', 'ST', 'CF'];
 
-// Premier League club primary colors — used to glow the ring around an FPL token.
-const PL_TEAM_COLORS = {
-  ARS: '#ef0107', AVL: '#95bfe5', BOU: '#da291c', BRE: '#e30613',
-  BHA: '#0057b8', CHE: '#034694', CRY: '#1b458f', EVE: '#003399',
-  FUL: '#ffffff', LEI: '#003090', LIV: '#c8102e', MCI: '#6cabdd',
-  MUN: '#da291c', NEW: '#241f20', NFO: '#dd0000', SOU: '#d71920',
-  TOT: '#132257', WHU: '#7a263a', WOL: '#fdb913', IPS: '#3457a4',
-  LEE: '#ffcd00', BUR: '#6c1d45', SHU: '#ee2737',
-};
-
 /* =============================================================
    POSITIONS
    ============================================================= */
@@ -109,15 +100,13 @@ const POSITION_GRID = [
   ['CDM', 'CB',  'GK'],
 ];
 
-// Map UI position → FPL element_type (1=GK, 2=DEF, 3=MID, 4=FWD)
-const POSITION_TO_FPL = {
-  GK:  1,
-  CB:  2, LB: 2, RB: 2,
-  CDM: 3, CM: 3, CAM: 3, LM: 3, RM: 3,
-  LW:  4, ST: 4, RW: 4,
+// Roles the faces dataset can be filtered by. Board roles it doesn't carry
+// (LWB/RWB/CF) fall back to their nearest equivalent.
+const ROLE_TO_FACE_ROLE = {
+  GK: 'GK', CB: 'CB', LB: 'LB', RB: 'RB', LWB: 'LB', RWB: 'RB',
+  CDM: 'CDM', CM: 'CM', CAM: 'CAM', LM: 'LM', RM: 'RM',
+  LW: 'LW', RW: 'RW', ST: 'ST', CF: 'ST',
 };
-
-const FPL_CATEGORY_LABEL = { 1: 'GKP', 2: 'DEF', 3: 'MID', 4: 'FWD' };
 
 /* =============================================================
    AD BOARDS
@@ -214,14 +203,14 @@ function buildFormation(key) {
   const players = [];
   formation.forEach(([label, x, y], i) => {
     players.push({
-      id: `h${i}`, team: 'home', label, number: i === 0 ? 1 : i + 1, fpl: null,
+      id: `h${i}`, team: 'home', label, number: i === 0 ? 1 : i + 1, face: null,
       pos: { inPossession: { x, y }, outOfPossession: { x, y } },
       arrowDir: null, speed: 6, press: 6,
     });
   });
   formation.forEach(([label, x, y], i) => {
     players.push({
-      id: `a${i}`, team: 'away', label, number: i === 0 ? 1 : i + 1, fpl: null,
+      id: `a${i}`, team: 'away', label, number: i === 0 ? 1 : i + 1, face: null,
       pos: { inPossession: { x: mirrorX(x), y }, outOfPossession: { x: mirrorX(x), y } },
       arrowDir: null, speed: 6, press: 6,
     });
@@ -254,35 +243,6 @@ function getSVGPoint(svg, evt) {
   if (!ctm) return { x: 0, y: 0 };
   return pt.matrixTransform(ctm.inverse());
 }
-
-/* =============================================================
-   FPL HELPERS
-   ============================================================= */
-let _fplCache = null;
-async function fetchFpl() {
-  if (_fplCache) return _fplCache;
-  const url = 'https://fantasy.premierleague.com/api/bootstrap-static/';
-  try {
-    const r = await fetch(url, { mode: 'cors' });
-    if (r.ok) { _fplCache = await r.json(); return _fplCache; }
-  } catch {}
-  // corsproxy.io is the primary fallback per production-prep — it works in
-  // Vercel's runtime where direct calls fail due to FPL's missing CORS headers.
-  const proxies = [
-    `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  ];
-  for (const p of proxies) {
-    try {
-      const r = await fetch(p);
-      if (r.ok) { _fplCache = await r.json(); return _fplCache; }
-    } catch {}
-  }
-  throw new Error('Could not fetch FPL data — try again.');
-}
-
-const fplPhotoUrl = (code) => `https://resources.premierleague.com/premierleague/photos/players/110x140/p${code}.png`;
 
 /* =============================================================
    PITCH LINES
@@ -388,7 +348,7 @@ function PitchLines({ showChannels, showDefLine, defLines, playing, animating, s
    PLAYER TOKEN
    ============================================================= */
 function PlayerToken({
-  player, x, y, selected, dragging, animating, showStats, showMovementArrows, fplMode,
+  player, x, y, selected, dragging, animating, showStats, showMovementArrows, playerMode,
   onPointerDown, onContextMenu, onDoubleClick,
 }) {
   const isHome = player.team === 'home';
@@ -396,11 +356,11 @@ function PlayerToken({
   const ring = isHome ? COLORS.homeRing : COLORS.awayRing;
   const labelFill = isHome ? COLORS.homeText : COLORS.awayText;
   const transition = animating ? `transform ${PHASE_DURATION}ms linear` : 'none';
-  const fpl = player.fpl;
-  const showHeadshot = fplMode && fpl;
+  const face = player.face;
+  const showHeadshot = playerMode && face;
 
   // tight name label width: char count × 6.2px + padding, min 36
-  const nameText = fpl?.name || '';
+  const nameText = face?.name || '';
   const nameWidth = Math.max(36, nameText.length * 6.4 + 12);
 
   return (
@@ -435,17 +395,6 @@ function PlayerToken({
         </Fragment>
       )}
 
-      {/* When PL mode + FPL assigned, glow with team colour */}
-      {showHeadshot && PL_TEAM_COLORS[fpl?.team] && (
-        <Fragment>
-          <circle r={PLAYER_R + 4} fill="none"
-            stroke={PL_TEAM_COLORS[fpl.team]} strokeWidth={1.5}
-            opacity={0.55} />
-          <circle r={PLAYER_R + 7} fill="none"
-            stroke={PL_TEAM_COLORS[fpl.team]} strokeWidth={1}
-            opacity={0.18} />
-        </Fragment>
-      )}
       <circle r={PLAYER_R + 1.5} fill={ring} opacity={0.95} />
 
       {showHeadshot ? (
@@ -455,24 +404,30 @@ function PlayerToken({
               <circle r={PLAYER_R - 0.5} />
             </clipPath>
           </defs>
-          {/* FPL portraits are 110×140 (head + chest). We want JUST the head.
-              The face occupies roughly the top 38% of the image, so we render
-              the photo oversized and align top-center: only the face fits
-              inside the circle clip. */}
+          {/* The kit disc sits behind the cutout: these PNGs have transparent
+              backgrounds, so without it the pitch would show through around
+              the head — and it keeps faced tokens reading as team members. */}
+          <circle r={PLAYER_R} fill={kit}
+            style={{ filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.4))' }} />
+          {/* Cutouts are 300×390 head-and-chest portraits. Measuring the alpha
+              silhouette, the head runs from the very top down to ~68% of the
+              height — that's where the outline pinches at the neck before
+              flaring into the shoulders. Map that band onto the disc. */}
           {(() => {
-            const FACE_RATIO = 0.38;          // top ~38% of source = face
-            const imgScale = (PLAYER_R * 2) / (140 * FACE_RATIO);
-            const imgW = 110 * imgScale;
-            const imgH = 140 * imgScale;
+            const HEAD_BOTTOM = 0.68;                       // head ends here
+            const headH = 390 * HEAD_BOTTOM;                // ≈265px of source
+            const imgScale = (PLAYER_R * 2 + 2) / headH;    // +2 to overfill
+            const imgW = 300 * imgScale;
+            const imgH = 390 * imgScale;
             return (
               <image
-                href={fplPhotoUrl(fpl.code)}
+                href={faceUrl(face.id)}
                 x={-imgW / 2}
-                y={-PLAYER_R - 1}              /* nudge up so hair isn't cropped */
+                y={-(headH / 2) * imgScale}    /* centre the head on the disc */
                 width={imgW}
                 height={imgH}
                 clipPath={`url(#clip-${player.id})`}
-                preserveAspectRatio="none"
+                preserveAspectRatio="xMidYMin meet"
               />
             );
           })()}
@@ -490,7 +445,7 @@ function PlayerToken({
         </Fragment>
       )}
 
-      {fplMode && fpl && (
+      {playerMode && face && (
         <g pointerEvents="none">
           <rect x={-nameWidth/2} y={PLAYER_R + 4} width={nameWidth} height={14} rx={2}
             fill="rgba(0,0,0,0.85)"
@@ -502,7 +457,7 @@ function PlayerToken({
         </g>
       )}
 
-      {showStats && !fplMode && (
+      {showStats && !playerMode && (
         <g pointerEvents="none">
           <rect x={-22} y={PLAYER_R + 4} width={44} height={13} rx={2}
             fill="rgba(0,0,0,0.78)" stroke="rgba(255,255,255,0.18)" strokeWidth={1} />
@@ -832,89 +787,78 @@ function ArrowOverlay({ arrow }) {
    ============================================================= */
 function AdBoard({ slot }) {
   const { ad, x, y, w, h, orientation } = slot;
-  const dir = orientation === 'h' ? 'to right' : 'to bottom';
+  const horiz = orientation === 'h';
+  const gradId = `adgrad-${ad.id}-${orientation}`;
+  const iconSize = horiz ? 24 : 20;
+
+  // Horizontal boards read left-to-right: icon, then label over sub-label.
+  // Vertical boards stack the icon above a label rotated to run upward.
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+
   return (
     <a href={ad.url} target="_blank" rel="noopener noreferrer" data-ad={ad.id}
-       style={{ pointerEvents: 'auto' }}>
-      <foreignObject x={x} y={y} width={w} height={h}>
-        <div xmlns="http://www.w3.org/1999/xhtml"
-          style={{
-            width: '100%', height: '100%',
-            background: `linear-gradient(${dir}, ${ad.g1} 0%, ${ad.g2} 100%)`,
-            borderRadius: '4px',
-            border: '1px solid rgba(255,255,255,0.14)',
-            display: 'flex',
-            flexDirection: orientation === 'h' ? 'row' : 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: orientation === 'h' ? '4px 12px' : '8px 4px',
-            cursor: 'pointer',
-            overflow: 'hidden',
-            position: 'relative',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.06)',
-            transition: 'transform 0.15s, filter 0.15s',
-            color: '#fff',
-            textAlign: 'center',
-            gap: orientation === 'h' ? '8px' : '4px',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'scale(1.03)';
-            e.currentTarget.style.filter = 'brightness(1.18)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'scale(1)';
-            e.currentTarget.style.filter = 'none';
-          }}
-        >
-          <div style={{
-            position: 'absolute', inset: 0,
-            background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.04) 0 1px, transparent 1px 3px)',
-            pointerEvents: 'none',
-          }}/>
+       className="ad-board" style={{ pointerEvents: 'auto' }}>
+      <rect x={x} y={y} width={w} height={h} rx={4}
+        fill={`url(#${gradId})`} stroke="rgba(255,255,255,0.14)" strokeWidth={1} />
+      {/* scanline texture */}
+      <rect x={x} y={y} width={w} height={h} rx={4} fill="url(#adScan)" pointerEvents="none" />
+
+      {horiz ? (
+        <g pointerEvents="none">
           {ad.icon && (
-            <img src={ad.icon} alt={ad.label}
-              style={{
-                width: orientation === 'h' ? '24px' : '20px',
-                height: orientation === 'h' ? '24px' : '20px',
-                objectFit: 'contain',
-                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))',
-                flexShrink: 0,
-              }}/>
+            <image href={ad.icon} x={x + 12} y={cy - iconSize / 2}
+              width={iconSize} height={iconSize} preserveAspectRatio="xMidYMid meet" />
           )}
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: orientation === 'h' ? 'flex-start' : 'center',
-            lineHeight: 1,
-            gap: orientation === 'h' ? '2px' : '0',
-          }}>
-            <div style={{
-              fontFamily: '"Uni Sans Heavy", "Bebas Neue", sans-serif',
-              fontWeight: 800,
-              fontSize: orientation === 'h' ? '16px' : '13px',
-              letterSpacing: orientation === 'h' ? '1.5px' : '1px',
-              textShadow: '0 2px 4px rgba(0,0,0,0.45)',
-              writingMode: orientation === 'v' ? 'vertical-rl' : 'horizontal-tb',
-              transform: orientation === 'v' ? 'rotate(180deg)' : 'none',
-            }}>
-              {ad.label}
-            </div>
-            {orientation === 'h' && (
-              <div style={{
-                fontFamily: 'Oswald, sans-serif',
-                fontSize: '9px',
-                letterSpacing: '1.5px',
-                opacity: 0.85,
-                fontWeight: 600,
-                textShadow: '0 1px 2px rgba(0,0,0,0.45)',
-              }}>
-                {ad.sub}
-              </div>
-            )}
-          </div>
-        </div>
-      </foreignObject>
+          <text x={x + 12 + (ad.icon ? iconSize + 8 : 0)} y={cy - 1}
+            fill="#fff" fontSize={16} fontWeight={800} letterSpacing="1.5"
+            style={{ fontFamily: '"Uni Sans Heavy", "Bebas Neue", sans-serif' }}>
+            {ad.label}
+          </text>
+          <text x={x + 12 + (ad.icon ? iconSize + 8 : 0)} y={cy + 12}
+            fill="rgba(255,255,255,0.85)" fontSize={9} fontWeight={600} letterSpacing="1.5"
+            style={{ fontFamily: 'Oswald, sans-serif' }}>
+            {ad.sub.toUpperCase()}
+          </text>
+        </g>
+      ) : (
+        <g pointerEvents="none">
+          {ad.icon && (
+            <image href={ad.icon} x={cx - iconSize / 2} y={y + 10}
+              width={iconSize} height={iconSize} preserveAspectRatio="xMidYMid meet" />
+          )}
+          <text x={0} y={0} textAnchor="middle"
+            transform={`translate(${cx + 5}, ${y + h - 12}) rotate(-90)`}
+            fill="#fff" fontSize={13} fontWeight={800} letterSpacing="1"
+            style={{ fontFamily: '"Uni Sans Heavy", "Bebas Neue", sans-serif' }}>
+            {ad.label}
+          </text>
+        </g>
+      )}
     </a>
+  );
+}
+
+/* Gradient + texture defs backing every ad board, emitted once per pitch. */
+function AdBoardDefs({ ads }) {
+  return (
+    <Fragment>
+      <pattern id="adScan" width="1" height="3" patternUnits="userSpaceOnUse">
+        <rect width="1" height="1" fill="rgba(0,0,0,0.05)" />
+      </pattern>
+      {ads.map(ad => (
+        <Fragment key={ad.id}>
+          <linearGradient id={`adgrad-${ad.id}-h`} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={ad.g1} />
+            <stop offset="100%" stopColor={ad.g2} />
+          </linearGradient>
+          <linearGradient id={`adgrad-${ad.id}-v`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={ad.g1} />
+            <stop offset="100%" stopColor={ad.g2} />
+          </linearGradient>
+        </Fragment>
+      ))}
+    </Fragment>
   );
 }
 
@@ -944,23 +888,27 @@ function PositionGrid({ current, onPick }) {
 }
 
 /* =============================================================
-   FPL PICKER PANEL (inline in side panel)
+   FACE PICKER PANEL (inline in side panel)
+   Backed by the football-faces dataset — ~7,300 players with
+   transparent-background cutouts, keyed by Transfermarkt id.
    ============================================================= */
-function FplPickerPanel({ targetPlayer, takenIds = new Set(), onPick, onClear }) {
-  const [data, setData] = useState(null);
+function FacePickerPanel({ targetPlayer, takenIds = new Set(), onPick, onClear }) {
+  const [index, setIndex] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [query, setQuery] = useState('');
-  const [teamFilter, setTeamFilter] = useState('all');
+  const [nation, setNation] = useState('');
+  // Default to the token's own role; the user can widen to every role.
+  const [roleFilter, setRoleFilter] = useState(true);
 
   useEffect(() => {
-    if (data || loading) return;
+    if (index || loading) return;
     setLoading(true);
-    fetchFpl()
-      .then((d) => setData(d))
-      .catch((e) => setError(e.message || 'Failed to load.'))
+    loadFaces()
+      .then(setIndex)
+      .catch((e) => setError(e?.message || 'Could not load the player index.'))
       .finally(() => setLoading(false));
-  }, [data, loading]);
+  }, [index, loading]);
 
   // Debounced GA event for player search
   useEffect(() => {
@@ -970,28 +918,27 @@ function FplPickerPanel({ targetPlayer, takenIds = new Set(), onPick, onClear })
     return () => clearTimeout(t);
   }, [query]);
 
-  const fplCategoryId = targetPlayer ? POSITION_TO_FPL[targetPlayer.label] : null;
+  const role = roleFilter ? (ROLE_TO_FACE_ROLE[targetPlayer?.label] || '') : '';
 
-  const filtered = useMemo(() => {
-    if (!data) return [];
-    let list = data.elements;
-    if (fplCategoryId) list = list.filter(p => p.element_type === fplCategoryId);
-    if (teamFilter !== 'all') list = list.filter(p => p.team === +teamFilter);
-    // Hide players already assigned to other tokens (across both teams).
-    // The currently-selected token's own assignment is allowed (so it shows
-    // up as the current pick, not as "missing").
-    list = list.filter(p => {
-      if (targetPlayer?.fpl?.id === p.id) return true;
-      return !takenIds.has(p.id);
-    });
-    const q = query.trim().toLowerCase();
-    if (q) list = list.filter(p => {
-      const full = `${p.first_name} ${p.second_name}`.toLowerCase();
-      return p.web_name.toLowerCase().includes(q) || full.includes(q);
-    });
-    list = [...list].sort((a, b) => (b.total_points || 0) - (a.total_points || 0));
-    return list.slice(0, 50);
-  }, [data, query, fplCategoryId, teamFilter, takenIds, targetPlayer?.fpl?.id]);
+  // The token's own pick stays visible even though it's in `takenIds`, so it
+  // reads as the current selection rather than silently vanishing.
+  const exclude = useMemo(() => {
+    const s = new Set(takenIds);
+    if (targetPlayer?.face?.id) s.delete(targetPlayer.face.id);
+    return s;
+  }, [takenIds, targetPlayer?.face?.id]);
+
+  const results = useMemo(
+    () => searchFaces(index, { query, role, nation, exclude }),
+    [index, query, role, nation, exclude]);
+
+  const nations = useMemo(() => nationsFor(index, role), [index, role]);
+
+  // A nation filter that the current role has nobody for would strand the
+  // list empty with no obvious cause — drop it instead.
+  useEffect(() => {
+    if (nation && nations.length && !nations.includes(nation)) setNation('');
+  }, [nation, nations]);
 
   if (!targetPlayer) return null;
 
@@ -1000,9 +947,9 @@ function FplPickerPanel({ targetPlayer, takenIds = new Set(), onPick, onClear })
       <div className="flex items-center justify-between mb-2">
         <div className="text-[10px] font-extrabold tracking-[0.25em] text-accent"
           style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
-          PL PLAYER PICKER
+          PLAYER PICKER
         </div>
-        {targetPlayer.fpl && (
+        {targetPlayer.face && (
           <button onClick={onClear}
             className="text-[9px] font-extrabold tracking-wider px-2 py-0.5 bg-rose-500/20 border border-rose-500/30 text-rose-300 rounded"
             style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
@@ -1011,63 +958,86 @@ function FplPickerPanel({ targetPlayer, takenIds = new Set(), onPick, onClear })
         )}
       </div>
 
-      <div className="text-[9px] text-dim mb-2 font-mono tracking-wider">
-        FILTERED · <span className="text-accent">{fplCategoryId ? FPL_CATEGORY_LABEL[fplCategoryId] : 'ALL'}</span>
-      </div>
-
       {error && (
         <div className="p-2 bg-rose-500/15 border border-rose-500/30 rounded text-rose-200 text-[11px] mb-2">
           ⚠ {error}
         </div>
       )}
       {loading && (
-        <div className="p-3 text-center text-mute text-[11px]">Loading FPL squads…</div>
+        <div className="p-3 text-center text-mute text-[11px]">Loading player index…</div>
       )}
-      {data && (
+
+      {index && (
         <Fragment>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search name…"
             className="w-full bg-well/50 border border-ink/10 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-accent mb-2" />
-          <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}
-            className="w-full bg-well/50 border border-ink/10 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-accent mb-2">
-            <option value="all">All clubs</option>
-            {data.teams && data.teams.map(t => (
-              <option key={t.id} value={t.id}>{t.short_name || t.name}</option>
-            ))}
-          </select>
+
+          <div className="flex gap-1.5 mb-2">
+            <button
+              onClick={() => setRoleFilter(v => !v)}
+              title="Limit results to players who actually play this role"
+              className={`px-2 py-1.5 text-[10px] font-extrabold tracking-wider rounded border transition whitespace-nowrap ${
+                roleFilter
+                  ? 'bg-accent/20 border-accent/45 text-accent'
+                  : 'bg-ink/5 border-ink/10 text-mute hover:bg-ink/10'
+              }`}
+              style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
+              {roleFilter ? (ROLE_TO_FACE_ROLE[targetPlayer.label] || 'ROLE') : 'ALL ROLES'}
+            </button>
+            <select value={nation} onChange={(e) => setNation(e.target.value)}
+              className="flex-1 min-w-0 bg-well/50 border border-ink/10 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-accent">
+              <option value="">All nations</option>
+              {nations.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+
           <div className="space-y-1 max-h-72 overflow-auto pr-0.5">
-            {filtered.map(p => {
-              const team = data.teams.find(t => t.id === p.team);
-              const fullName = `${p.first_name} ${p.second_name}`.trim();
+            {results.map(p => {
+              const age = ageFrom(p.dob);
+              const current = targetPlayer.face?.id === p.id;
               return (
                 <button key={p.id}
                   onClick={() => onPick({
-                    id: p.id, code: p.code, name: p.web_name, fullName,
-                    position: FPL_CATEGORY_LABEL[p.element_type],
-                    team: team ? team.short_name : '',
+                    id: p.id, name: p.name, fullName: p.fullName,
+                    role: p.role, nation: p.nation,
                   })}
-                  className="w-full text-left p-1.5 bg-ink/[0.03] hover:bg-accent/10 border border-ink/10 hover:border-accent/40 rounded transition group flex gap-2 items-center">
-                  <img src={fplPhotoUrl(p.code)} alt={p.web_name}
-                    className="w-9 h-11 object-cover rounded bg-well/60"
-                    style={{ objectPosition: 'top' }}
-                    onError={(e) => { e.currentTarget.style.opacity = '0.2'; }}/>
+                  className={`w-full text-left p-1.5 rounded transition group flex gap-2 items-center border ${
+                    current
+                      ? 'bg-accent/15 border-accent/50'
+                      : 'bg-ink/[0.03] hover:bg-accent/10 border-ink/10 hover:border-accent/40'
+                  }`}>
+                  <img src={faceUrl(p.id)} alt="" loading="lazy" width={36} height={44}
+                    className="w-9 h-11 object-contain object-top rounded bg-well/60 flex-shrink-0"
+                    onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}/>
                   <div className="flex-1 min-w-0">
                     <div className="text-[12px] font-extrabold truncate group-hover:text-accent"
                       style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '0.3px' }}>
-                      {p.web_name}
+                      {p.name}
                     </div>
-                    <div className="text-[9px] text-mute font-mono">
-                      {team ? team.short_name : '?'} · {p.total_points} PTS
+                    <div className="text-[9px] text-mute font-mono truncate">
+                      {p.role}{p.nation ? ` · ${p.nation}` : ''}{age != null ? ` · ${age}` : ''}
                     </div>
                   </div>
                 </button>
               );
             })}
-            {filtered.length === 0 && (
-              <div className="py-3 text-center text-dim text-[11px]">No players match.</div>
+            {results.length === 0 && (
+              <div className="py-3 text-center text-dim text-[11px]">
+                No players match.
+                {roleFilter && <> Try <button onClick={() => setRoleFilter(false)}
+                  className="text-accent underline">all roles</button>.</>}
+              </div>
             )}
+          </div>
+
+          <div className="mt-2 pt-2 border-t border-ink/10 text-[8.5px] text-dim font-mono leading-tight">
+            {index.players.length.toLocaleString()} players · faces &amp; data via{' '}
+            <a href={index.source} target="_blank" rel="noopener noreferrer"
+              className="text-accent hover:underline">football-faces</a>
+            {' '}· photos © Transfermarkt
           </div>
         </Fragment>
       )}
@@ -1138,7 +1108,7 @@ function DisplayOptionsModal({ open, onClose, opts, setOpts, theme, setTheme }) 
         {[
           ['showShapeLines',   'Positional Structure Lines', 'Connect each unit — defence, midfield, attack — plus CAM→ST and faint fullback / centre-back progression linkers. Drag a line to move the whole unit (2D).'],
           ['darkPitch',        'Dark Pitch Surface',         'Swap the green turf for night slate. Selecting the Dark theme turns this on automatically.'],
-          ['fplMode',          'Premier League Player Mode', 'Click any token to assign a real PL player. Photo + name appear on the token.'],
+          ['playerMode',       'Real Player Faces',          'Click any token to assign one of ~7,300 real players. Their cutout and name appear on the token.'],
           ['showStats',        'Player Stat Badges',         'Speed / press intensity badge under each token.'],
           ['showMovementArrows','Movement Intent Arrows',    'Per-player movement vector (set in player editor).'],
           ['showTrails',       'Phase Movement Trails',      'Ghost dashed lines as phases play through.'],
@@ -1322,6 +1292,7 @@ function TacticsBuilder({ session, profile, signOut }) {
   const [drawingShape, setDrawingShape] = useState(null);
   const [showSidePanel, setShowSidePanel] = useState(true);
   const [draggingIds, setDraggingIds] = useState([]);  // token pickup scale
+  const [exporting, setExporting] = useState(false);
   const [trails, setTrails] = useState([]);
   const [activePreset, setActivePreset] = useState('4-3-3');
   const [compareMode, setCompareMode] = useState(false);
@@ -1339,7 +1310,7 @@ function TacticsBuilder({ session, profile, signOut }) {
     showChannels: false,
     showDefLine: false,
     showAds: true,
-    fplMode: false,
+    playerMode: false,
     showBall: true,
     showShapeLines: true,   // positional-structure unit lines (2D)
     darkPitch: false,       // night-slate turf instead of green
@@ -1549,11 +1520,11 @@ function TacticsBuilder({ session, profile, signOut }) {
     return f ? `${team === 'home' ? 'HOME' : 'AWAY'} · ${f}` : '';
   }, [players, possessionMode, editingTeam, currentPhase]);
 
-  // Set of FPL ids already assigned somewhere on the pitch — used to dedupe
+  // Set of player ids already assigned somewhere on the pitch — used to dedupe
   // the picker so the same player can't be placed twice.
-  const takenFplIds = useMemo(() => {
+  const takenFaceIds = useMemo(() => {
     const s = new Set();
-    for (const p of players) if (p.fpl?.id) s.add(p.fpl.id);
+    for (const p of players) if (p.face?.id) s.add(p.face.id);
     return s;
   }, [players]);
 
@@ -1806,9 +1777,9 @@ function TacticsBuilder({ session, profile, signOut }) {
   /* ── Player handlers ─────────────────────────────────────── */
   const handleContextMenu = (e, id) => {
     e.preventDefault(); e.stopPropagation();
-    if (opts.fplMode) {
+    if (opts.playerMode) {
       pushHistory();
-      setPlayers(prev => prev.map(p => p.id === id ? { ...p, fpl: null } : p));
+      setPlayers(prev => prev.map(p => p.id === id ? { ...p, face: null } : p));
       return;
     }
     setSelectedPlayer(id);
@@ -1836,9 +1807,9 @@ function TacticsBuilder({ session, profile, signOut }) {
     continueDragOrDraw,
     endDragOrDraw,
     selectPlayer: (id) => setSelectedPlayer(id),
-    clearFplFor: (id) => {
+    clearFaceFor: (id) => {
       pushHistory();
-      setPlayers(prev => prev.map(p => p.id === id ? { ...p, fpl: null } : p));
+      setPlayers(prev => prev.map(p => p.id === id ? { ...p, face: null } : p));
     },
     tryErase,
   };
@@ -2069,37 +2040,80 @@ function TacticsBuilder({ session, profile, signOut }) {
   };
 
   /* ── Export ──────────────────────────────────────────────── */
+  // A serialized SVG rasterises inside an isolated document that cannot
+  // resolve external or root-relative URLs, so face cutouts and ad logos
+  // would silently vanish from the export. Inline every raster first.
+  const inlineRasters = async (root) => {
+    const nodes = [...root.querySelectorAll('image, img')];
+    await Promise.all(nodes.map(async (el) => {
+      const attr = el.tagName.toLowerCase() === 'img' ? 'src' : 'href';
+      const src = el.getAttribute(attr) || el.getAttribute('xlink:href');
+      if (!src || src.startsWith('data:')) return;
+      try {
+        const res = await fetch(src, { mode: 'cors' });
+        if (!res.ok) throw new Error(String(res.status));
+        const blob = await res.blob();
+        const dataUri = await new Promise((resolve, reject) => {
+          const fr = new FileReader();
+          fr.onload = () => resolve(fr.result);
+          fr.onerror = reject;
+          fr.readAsDataURL(blob);
+        });
+        el.setAttribute(attr, dataUri);
+        el.removeAttribute('xlink:href');
+      } catch {
+        // Drop unreachable assets — a broken reference can abort the whole
+        // rasterisation, losing the entire export rather than one image.
+        el.remove();
+      }
+    }));
+  };
+
   const exportPNG = async () => {
     const svg = svgRef.current;
-    if (!svg) return;
-    const clone = svg.cloneNode(true);
-    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    const xml = new XMLSerializer().serializeToString(clone);
-    const blob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
+    if (!svg || exporting) return;
+    setExporting(true);
+    let url;
+    try {
+      const clone = svg.cloneNode(true);
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      await inlineRasters(clone);
+      const xml = new XMLSerializer().serializeToString(clone);
+      url = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml;charset=utf-8' }));
+
+      const img = await new Promise((resolve, reject) => {
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = () => reject(new Error('Could not rasterise the board.'));
+        im.src = url;
+      });
+
       const scale = 2;
+      const canvas = document.createElement('canvas');
       canvas.width = VB_W * scale;
       canvas.height = (VB_H + 80) * scale;
       const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#0b0d08';
+      ctx.fillStyle = skin.deck;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 80 * scale, VB_W * scale, VB_H * scale);
-      ctx.fillStyle = '#e7ebf2';
+      ctx.fillStyle = '#f1f4e3';
       ctx.font = `${28 * scale}px "Bebas Neue", Inter, sans-serif`;
       ctx.fillText(tacticName.toUpperCase(), 24 * scale, 50 * scale);
-      ctx.fillStyle = '#60a5fa';
+      ctx.fillStyle = COLORS.accent;
       ctx.font = `${14 * scale}px Oswald, Inter, sans-serif`;
       ctx.fillText(formationLabel || possessionMode.toUpperCase(), 24 * scale, 72 * scale);
+
       const a = document.createElement('a');
-      a.download = `${tacticName.replace(/[^a-z0-9]+/gi, '_')}.png`;
+      a.download = `${tacticName.replace(/[^a-z0-9]+/gi, '_') || 'tactic'}.png`;
       a.href = canvas.toDataURL('image/png');
       a.click();
-      URL.revokeObjectURL(url);
-    };
-    img.src = url;
+    } catch (err) {
+      console.error('[export]', err);
+      alert(`Export failed: ${err.message || err}`);
+    } finally {
+      if (url) URL.revokeObjectURL(url);
+      setExporting(false);
+    }
   };
 
   /* ── Tactic save/load ────────────────────────────────────── */
@@ -2112,7 +2126,10 @@ function TacticsBuilder({ session, profile, signOut }) {
     if (!d || !Array.isArray(d.players)) return;
     pushHistory(); triggerAnimation();
     setTacticName(d.name || 'Loaded tactic');
-    setPlayers(d.players);
+    // Boards saved before the football-faces switch carry `fpl` assignments
+    // keyed by FPL id, which can't be resolved to a face — drop them and keep
+    // everything else about the player intact.
+    setPlayers(d.players.map(({ fpl, ...p }) => (fpl && !p.face ? { ...p, face: null } : p)));
     setPhases(d.phases || [null, null, null, null]);
     setArrows(d.arrows || []); setZones(d.zones || []);
     setTexts(d.texts || []); setPresses(d.presses || []);
@@ -2124,27 +2141,25 @@ function TacticsBuilder({ session, profile, signOut }) {
     if (d.editingTeam) setEditingTeam(d.editingTeam);
   };
 
-  /* ── FPL & Position ──────────────────────────────────────── */
-  const handleFplPick = (fplData) => {
+  /* ── Faces & Position ────────────────────────────────────── */
+  const handleFacePick = (faceData) => {
     if (!selectedPlayer) return;
     pushHistory();
-    setPlayers(prev => prev.map(p => p.id === selectedPlayer ? { ...p, fpl: fplData } : p));
+    setPlayers(prev => prev.map(p => p.id === selectedPlayer ? { ...p, face: faceData } : p));
   };
-  const handleFplClear = () => {
+  const handleFaceClear = () => {
     if (!selectedPlayer) return;
     pushHistory();
-    setPlayers(prev => prev.map(p => p.id === selectedPlayer ? { ...p, fpl: null } : p));
+    setPlayers(prev => prev.map(p => p.id === selectedPlayer ? { ...p, face: null } : p));
   };
   const handlePositionPick = (pos) => {
     if (!selectedPlayer) return;
     pushHistory();
     setPlayers(prev => prev.map(p => {
       if (p.id !== selectedPlayer) return p;
-      // If FPL category changes, clear the FPL assignment (mismatch protection)
-      const oldCat = POSITION_TO_FPL[p.label];
-      const newCat = POSITION_TO_FPL[pos];
-      const fpl = (oldCat !== newCat) ? null : p.fpl;
-      return { ...p, label: pos, fpl };
+      // The face assignment survives a role change — playing a winger at
+      // wing-back is a legitimate tactical choice, not a data mismatch.
+      return { ...p, label: pos };
     }));
   };
 
@@ -2298,6 +2313,7 @@ function TacticsBuilder({ session, profile, signOut }) {
             <circle cx="2" cy="2" r="1" fill="rgba(20,30,50,0.85)" />
             <circle cx="5" cy="4" r="0.9" fill="rgba(35,45,65,0.85)" />
           </pattern>
+          {opts.showAds && <AdBoardDefs ads={DEFAULT_ADS} />}
           {/* kit shading — off-center light source for a 3D shirt read */}
           <radialGradient id="kitHome" cx="35%" cy="30%" r="85%">
             <stop offset="0%" stopColor="#ffffff" />
@@ -2451,7 +2467,7 @@ function TacticsBuilder({ session, profile, signOut }) {
                 animating={animating}
                 showStats={opts.showStats}
                 showMovementArrows={opts.showMovementArrows}
-                fplMode={opts.fplMode}
+                playerMode={opts.playerMode}
                 onPointerDown={beginDragPlayer}
                 onContextMenu={handleContextMenu}
                 onDoubleClick={handleDoubleClick}
@@ -2599,10 +2615,10 @@ function TacticsBuilder({ session, profile, signOut }) {
             className="px-2 py-1.5 text-[11px] font-bold bg-ink/5 hover:bg-ink/10 border border-ink/10 rounded">↶</button>
           <button onClick={redo}
             className="px-2 py-1.5 text-[11px] font-bold bg-ink/5 hover:bg-ink/10 border border-ink/10 rounded">↷</button>
-          <button onClick={exportPNG}
-            className="px-3 py-1.5 text-[11px] font-black bg-accent hover:brightness-110 text-acc-ink rounded transition shadow-glow sheen"
+          <button onClick={exportPNG} disabled={exporting}
+            className="px-3 py-1.5 text-[11px] font-black bg-accent hover:brightness-110 text-acc-ink rounded transition shadow-glow sheen disabled:opacity-60"
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
-            ⇩ EXPORT
+            {exporting ? '⏳ EXPORTING…' : '⇩ EXPORT'}
           </button>
 
           {profile && (
@@ -2697,10 +2713,10 @@ function TacticsBuilder({ session, profile, signOut }) {
                     PHASE {currentPhase + 1}
                   </span>
                 )}
-                {opts.fplMode && (
+                {opts.playerMode && (
                   <span className="px-2 py-0.5 text-[10px] font-black bg-accent/30 text-ink border border-accent/40 rounded tracking-widest"
                     style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
-                    PL MODE
+                    FACES
                   </span>
                 )}
                 {playing && (
@@ -2733,7 +2749,7 @@ function TacticsBuilder({ session, profile, signOut }) {
                     displayedPositions={displayedPositions}
                     ballPos={displayedBall}
                     selectedPlayer={selectedPlayer}
-                    fplMode={opts.fplMode}
+                    playerMode={opts.playerMode}
                     tool={tool}
                     arrowColor={arrowColor}
                     drawings={live}
@@ -2886,23 +2902,30 @@ function TacticsBuilder({ session, profile, signOut }) {
                 <Fragment>
                   <section className="p-3 rounded-lg bg-ink/[0.03] border border-ink/10 corner-tape">
                     <div className="flex items-center gap-2 mb-3">
-                      <span className="w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-black flex-shrink-0"
+                      <span className="w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-black flex-shrink-0 overflow-hidden relative"
                         style={{
                           background: sel.team === 'home' ? COLORS.home : COLORS.away,
-                          color: '#fff',
+                          color: sel.team === 'home' ? COLORS.homeText : COLORS.awayText,
                           fontFamily: '"Uni Sans Heavy", Oswald, sans-serif',
                           boxShadow: '0 0 14px rgba(215,255,60,0.25)',
                         }}>
-                        {sel.label}
+                        {sel.face ? (
+                          <img src={faceUrl(sel.face.id)} alt="" aria-hidden="true"
+                            className="absolute inset-0 w-full h-auto"
+                            style={{ objectFit: 'cover', objectPosition: 'top' }}
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                        ) : sel.label}
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className="text-[10px] text-dim font-extrabold tracking-[0.2em]"
                           style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
                           {sel.team === 'home' ? 'HOME' : 'AWAY'} · #{sel.number}
+                          {sel.face?.nation ? ` · ${sel.face.nation}` : ''}
                         </div>
                         <div className="text-sm font-extrabold text-ink tracking-wide truncate"
+                          title={sel.face ? sel.face.fullName : undefined}
                           style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
-                          {sel.fpl ? sel.fpl.fullName : `Player ${sel.label}`}
+                          {sel.face ? sel.face.fullName : `Player ${sel.label}`}
                         </div>
                       </div>
                       <button onClick={() => setSelectedPlayer(null)}
@@ -2929,19 +2952,19 @@ function TacticsBuilder({ session, profile, signOut }) {
                     </div>
                   </section>
 
-                  {opts.fplMode ? (
-                    <FplPickerPanel
+                  {opts.playerMode ? (
+                    <FacePickerPanel
                       targetPlayer={sel}
-                      takenIds={takenFplIds}
-                      onPick={handleFplPick}
-                      onClear={handleFplClear}
+                      takenIds={takenFaceIds}
+                      onPick={handleFacePick}
+                      onClear={handleFaceClear}
                     />
                   ) : (
                     <button
-                      onClick={() => setOpts(o => ({ ...o, fplMode: true }))}
+                      onClick={() => setOpts(o => ({ ...o, playerMode: true }))}
                       className="w-full py-2.5 bg-accent/10 hover:bg-accent/20 border border-accent/30 text-accent rounded text-[11px] font-extrabold tracking-wider"
                       style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
-                      ENABLE PL MODE → ASSIGN REAL PLAYER
+                      ENABLE PLAYER MODE → ASSIGN A REAL FACE
                     </button>
                   )}
                 </Fragment>
@@ -3006,7 +3029,7 @@ function TacticsBuilder({ session, profile, signOut }) {
                 <div>• Drag → reposition · Click → edit panel</div>
                 <div>• <span className="text-accent">Shift+click</span> players → multi-select · drag any one to move them together</div>
                 <div>• Drag a <span className="text-accent">structure line</span> → move that whole unit</div>
-                <div>• Right-click player → clear FPL assignment</div>
+                <div>• Right-click player → clear the assigned face</div>
                 <div>• Arrow tool → freehand path · <span className="text-accent">RUN/PASS</span> sets line style</div>
                 <div>• Shape tool → drag a box · <span className="text-accent">Shift</span> = perfect square</div>
                 <div>• Select tool → drag shapes to reposition them</div>

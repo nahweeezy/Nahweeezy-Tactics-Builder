@@ -4,7 +4,7 @@ A browser based tactical sandbox that allows visualization + animation of tactic
 
 This was intended to be used in conjunction with my YT page _Nahweeezy_, but I think it has a lot of potential as a product entirely. 
 
-There's a couple other QOL features as well, such as importing Premier League players (need to find an expansive database/API of players in order to expand)
+There's a couple other QOL features as well — chiefly **Player Mode**, which drops real footballers onto the board with background-removed face cutouts, pulled from my [football-faces](https://github.com/nahweeezy/football-faces) dataset (~7,300 players).
 
 ## Stack
 
@@ -21,6 +21,8 @@ Vite + React + Supabase + Tailwind. Multi-page rollup so the marketing landing (
 ├── package.json
 ├── vercel.json                  # Vite preset + /tactics rewrite
 ├── .env.example
+├── scripts/
+│   └── build-faces-index.mjs    # regenerates the player index from football-faces
 ├── src/
 │   ├── landing/
 │   │   └── main.js              # nav auth slot + smooth-scroll
@@ -28,6 +30,9 @@ Vite + React + Supabase + Tailwind. Multi-page rollup so the marketing landing (
 │       ├── main.jsx             # mounts <AuthGate><TacticsBuilder/></AuthGate>
 │       ├── TacticsBuilder.jsx   # the big React component (~3,000 LOC)
 │       ├── Pitch3D.jsx          # optional Three.js stadium overlay
+│       ├── faces.js             # player index loader + search (football-faces)
+│       ├── data/
+│       │   └── faces-index.json # generated: ~7,300 players, code-split chunk
 │       ├── ErrorBoundary.jsx
 │       ├── supabase.js          # Supabase client + helpers
 │       ├── analytics.js         # GA4 wrapper (track.* helpers)
@@ -102,7 +107,35 @@ Email/password + Google + Discord OAuth are all wired in. Enable each in **Supab
 | `possession_toggle`    | IP/OOP swap                                              |
 | `phase_animation_play` | pressing ▶ Play                                          |
 | `login`, `sign_up`     | auth events with `method` (email / google / discord)     |
-| `player_search`        | debounced FPL picker search                              |
+| `player_search`        | debounced player-picker search                           |
+
+## Player Mode (football-faces)
+
+Turn on **Real Player Faces** in Visual Display Settings, then click any token to
+open the picker. It filters by the token's actual role — a left-back token lists
+left-backs, not "defenders" — plus nationality and a name search that ignores
+accents (`mbappe` finds Mbappé).
+
+Data comes from [football-faces](https://github.com/nahweeezy/football-faces).
+The upstream `metadata.json` is ~4.3 MB, so a build step flattens it into a
+compact index that ships as its own lazily-imported chunk (~184 KB gzipped,
+loaded only when Player Mode is first opened). Face cutouts stream from jsDelivr
+on demand and are inlined as data URIs during PNG export.
+
+```bash
+npm run faces:build   # regenerate src/tactics/data/faces-index.json
+```
+
+Re-run that whenever the faces repo gains players. The generated file is
+committed, so a plain `npm install && npm run build` needs no network.
+
+## Credits
+
+Player photos and biographical data originate from **Transfermarkt**, via the
+[football-faces](https://github.com/nahweeezy/football-faces) dataset. This
+project is unofficial and not affiliated with or endorsed by Transfermarkt; the
+underlying images and data remain the property of Transfermarkt and their
+respective rights holders.
 
 ## What's intentionally NOT in this repo
 

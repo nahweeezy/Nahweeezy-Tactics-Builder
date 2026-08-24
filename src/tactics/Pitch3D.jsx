@@ -4,6 +4,7 @@ import { OrbitControls, Environment, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import ErrorBoundary from './ErrorBoundary';
+import { faceUrl } from './faces';
 
 // ── Custom stadium (.dae) configuration ────────────────────────────
 // Drop your COLLADA file at: public/assets/models/stadium.dae
@@ -167,7 +168,7 @@ function applyPBRMaterials(scene) {
  *   • RMB drag             → orbit camera
  *   • Scroll               → zoom
  *   • Middle drag          → dolly
- *   • Right-click player   → clear FPL assignment (PL mode only)
+ *   • Right-click player   → clear the assigned face (Player Mode only)
  */
 
 // 3D world scale: 1 unit = 1 metre. Real pitch ≈ 105 × 68 m.
@@ -193,9 +194,6 @@ const ARROW_COLOR_HEX = {
   orange: '#fb923c',
   blue:   '#60a5fa',
 };
-
-const fplPhotoUrl = (code) =>
-  `https://resources.premierleague.com/premierleague/photos/players/110x140/p${code}.png`;
 
 /* ────────────────────────────────────────────────────────────
    PITCH GROUND — canvas-textured plane with chevron stripes + lines
@@ -318,10 +316,10 @@ function StadiumAdsPopup({ onClose }) {
         }}>
         <div onClick={(e) => e.stopPropagation()}
           style={{
-            background:'#0d141f', borderRadius:12,
-            border:'1px solid rgba(96,165,250,0.35)',
+            background:'#171b0f', borderRadius:12,
+            border:'1px solid rgba(215,255,60,0.35)',
             padding:'24px 28px', minWidth:320, maxWidth:420,
-            boxShadow:'0 30px 80px rgba(0,0,0,0.7), 0 0 60px rgba(96,165,250,0.18)',
+            boxShadow:'0 30px 80px rgba(0,0,0,0.7), 0 0 60px rgba(215,255,60,0.18)',
           }}>
           <div style={{
             fontFamily:'"Bebas Neue", sans-serif', fontSize:24,
@@ -329,7 +327,7 @@ function StadiumAdsPopup({ onClose }) {
           }}>NAHWEEEZY</div>
           <div style={{
             fontFamily:'Oswald, sans-serif', fontSize:11,
-            color:'#60a5fa', letterSpacing:'3px', marginBottom:18,
+            color:'#d7ff3c', letterSpacing:'3px', marginBottom:18,
           }}>FOLLOW · WATCH · CHAT</div>
           <div style={{ display:'grid', gap:8 }}>
             {NAHWEEEZY_ADS.map(ad => (
@@ -420,7 +418,7 @@ function GoalNet({ x }) {
 /* ────────────────────────────────────────────────────────────
    INTERACTIVE PLAYER — clickable, draggable, with selection ring
    ──────────────────────────────────────────────────────────── */
-function Player3D({ player, position, color, selected, fplMode, animating,
+function Player3D({ player, position, color, selected, playerMode, animating,
                    onPointerDown, onContextMenu, onLabelClick }) {
   const ringRef = useRef();
   // Imperative position lerp: when `animating` flips true and the target
@@ -505,18 +503,21 @@ function Player3D({ player, position, color, selected, fplMode, animating,
           // inner clickable bits below opt back in to receive clicks.
           pointerEvents: 'none',
         }}>
-          {fplMode && player.fpl && (
+          {playerMode && player.face && (
             <img
-              src={fplPhotoUrl(player.fpl.code)}
-              alt={player.fpl.name}
+              src={faceUrl(player.face.id)}
+              alt={player.face.name}
               draggable={false}
               onClick={(e) => { e.stopPropagation(); onLabelClick?.(player.id); }}
+              onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}
               style={{
                 width: 44, height: 44,
+                // Cutouts are transparent head-and-chest PNGs: cover+top framing
+                // keeps the face in the disc, and the kit colour fills behind it.
                 objectFit: 'cover', objectPosition: 'top',
                 borderRadius: '50%',
                 border: `2px solid ${color}`,
-                background: '#0d141f',
+                background: color,
                 boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
                 cursor: 'pointer', pointerEvents: 'auto',
               }} />
@@ -526,16 +527,17 @@ function Player3D({ player, position, color, selected, fplMode, animating,
             title="Click to open player panel"
             style={{
               padding: '3px 9px',
-              background: selected ? 'rgba(29,78,216,0.95)' : 'rgba(0,0,0,0.88)',
-              border: selected ? '1px solid #93c5fd' : '1px solid rgba(96,165,250,0.55)',
+              background: selected ? 'rgba(215,255,60,0.95)' : 'rgba(0,0,0,0.88)',
+              border: selected ? '1px solid #eaffa0' : '1px solid rgba(215,255,60,0.55)',
               borderRadius: 4,
               fontSize: 13,
               fontFamily: '"Uni Sans Heavy", Oswald, sans-serif',
               letterSpacing: '0.06em',
-              color: '#fff',
+              // Volt is a light accent — dark ink on it, white off it.
+              color: selected ? '#0e1104' : '#fff',
               fontWeight: 800,
               whiteSpace: 'nowrap',
-              textShadow: '0 1px 2px rgba(0,0,0,0.7)',
+              textShadow: selected ? 'none' : '0 1px 2px rgba(0,0,0,0.7)',
               userSelect: 'none',
               cursor: 'pointer',
               pointerEvents: 'auto',
@@ -543,7 +545,7 @@ function Player3D({ player, position, color, selected, fplMode, animating,
             }}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; }}>
-            {fplMode && player.fpl ? player.fpl.name : player.label}
+            {playerMode && player.face ? player.face.name : player.label}
           </div>
         </div>
       </Html>
@@ -678,12 +680,12 @@ function TextMesh({ t, onClick }) {
         style={{
           padding: '3px 8px',
           background: 'rgba(0,0,0,0.82)',
-          border: '1px solid rgba(96,165,250,0.42)',
+          border: '1px solid rgba(215,255,60,0.42)',
           borderRadius: 3,
           fontSize: 11,
           fontFamily: '"Uni Sans Heavy", Oswald, sans-serif',
           letterSpacing: '0.08em',
-          color: '#60a5fa',
+          color: '#d7ff3c',
           fontWeight: 800,
           whiteSpace: 'nowrap',
           cursor: 'pointer',
@@ -724,7 +726,7 @@ function PressMesh({ p, onClick }) {
    SCENE — ties everything together inside the Canvas
    ──────────────────────────────────────────────────────────── */
 function Scene({ tactics, players, displayedPositions, ballPos,
-                 selectedPlayer, fplMode, tool, arrowColor, drawings, drawingArrow, drawingZone,
+                 selectedPlayer, playerMode, tool, arrowColor, drawings, drawingArrow, drawingZone,
                  customStadium, animating }) {
   const { camera, gl, raycaster } = useThree();
   const [ctrlHeld, setCtrlHeld] = useState(false);
@@ -798,8 +800,8 @@ function Scene({ tactics, players, displayedPositions, ballPos,
     }
     const pt = project(e.clientX, e.clientY);
     if (!pt) return;
-    if (fplMode) {
-      tactics.selectPlayer(id);                // clicking opens FPL panel
+    if (playerMode) {
+      tactics.selectPlayer(id);                // clicking opens the face picker
       return;
     }
     tactics.startPlayerDrag(id, pt);
@@ -808,7 +810,7 @@ function Scene({ tactics, players, displayedPositions, ballPos,
   const handlePlayerContextMenu = (e, id) => {
     e.nativeEvent?.preventDefault?.();
     e.stopPropagation();
-    if (fplMode) tactics.clearFplFor(id);
+    if (playerMode) tactics.clearFaceFor(id);
     else tactics.selectPlayer(id);
   };
   const handleBallDown = (e) => {
@@ -915,7 +917,7 @@ function Scene({ tactics, players, displayedPositions, ballPos,
           <Player3D key={p.id} player={p} position={[wx, 0, wz]}
             color={p.team === 'home' ? TEAM_COLORS.home : TEAM_COLORS.away}
             selected={selectedPlayer === p.id}
-            fplMode={fplMode}
+            playerMode={playerMode}
             animating={animating}
             onPointerDown={handlePlayerDown}
             onContextMenu={handlePlayerContextMenu}
@@ -951,7 +953,7 @@ function Scene({ tactics, players, displayedPositions, ballPos,
 }
 
 export default function Pitch3D({ tactics, players, displayedPositions, ballPos,
-                                  selectedPlayer, fplMode, tool, arrowColor,
+                                  selectedPlayer, playerMode, tool, arrowColor,
                                   drawings, drawingArrow, drawingZone,
                                   customStadium, animating }) {
   // R3F's Canvas mounts with default 300×150 dimensions when lazy-loaded
@@ -991,7 +993,7 @@ export default function Pitch3D({ tactics, players, displayedPositions, ballPos,
           displayedPositions={displayedPositions}
           ballPos={ballPos}
           selectedPlayer={selectedPlayer}
-          fplMode={fplMode}
+          playerMode={playerMode}
           tool={tool}
           arrowColor={arrowColor}
           drawings={drawings}
