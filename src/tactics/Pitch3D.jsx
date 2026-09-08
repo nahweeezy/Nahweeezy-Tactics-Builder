@@ -545,7 +545,7 @@ function Player3D({ player, position, color, selected, playerMode, animating,
             }}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; }}>
-            {playerMode && player.face ? player.face.name : player.label}
+            {player.name?.trim() || (playerMode && player.face ? player.face.name : player.label)}
           </div>
         </div>
       </Html>
@@ -727,7 +727,7 @@ function PressMesh({ p, onClick }) {
    ──────────────────────────────────────────────────────────── */
 function Scene({ tactics, players, displayedPositions, ballPos,
                  selectedPlayer, playerMode, tool, arrowColor, drawings, drawingArrow, drawingZone,
-                 customStadium, animating }) {
+                 customStadium, animating, kits = TEAM_COLORS }) {
   const { camera, gl, raycaster } = useThree();
   const [ctrlHeld, setCtrlHeld] = useState(false);
   const [adsOpen, setAdsOpen] = useState(false);
@@ -915,7 +915,7 @@ function Scene({ tactics, players, displayedPositions, ballPos,
         const wz = pitchToWorldZ(pos.y);
         return (
           <Player3D key={p.id} player={p} position={[wx, 0, wz]}
-            color={p.team === 'home' ? TEAM_COLORS.home : TEAM_COLORS.away}
+            color={p.team === 'home' ? kits.home : kits.away}
             selected={selectedPlayer === p.id}
             playerMode={playerMode}
             animating={animating}
@@ -955,7 +955,7 @@ function Scene({ tactics, players, displayedPositions, ballPos,
 export default function Pitch3D({ tactics, players, displayedPositions, ballPos,
                                   selectedPlayer, playerMode, tool, arrowColor,
                                   drawings, drawingArrow, drawingZone,
-                                  customStadium, animating }) {
+                                  customStadium, animating, kits = TEAM_COLORS }) {
   // R3F's Canvas mounts with default 300×150 dimensions when lazy-loaded
   // inside Suspense — its internal ResizeObserver doesn't catch the parent
   // layout settle. We poke `resize` a few times after mount to force a
@@ -982,7 +982,7 @@ export default function Pitch3D({ tactics, players, displayedPositions, ballPos,
         camera={{ position: [0, 35, 65], fov: 45, near: 0.1, far: 500 }}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
         onContextMenu={(e) => e.preventDefault()}
-        style={{ borderRadius: '12px', background: '#060912', cursor:
+        style={{ borderRadius: '12px', background: '#0b0d08', cursor:
           tool === 'arrow' || tool === 'zone' || tool === 'press' ? 'crosshair' :
           tool === 'text' ? 'text' :
           tool === 'eraser' ? 'not-allowed' :
@@ -994,6 +994,7 @@ export default function Pitch3D({ tactics, players, displayedPositions, ballPos,
           ballPos={ballPos}
           selectedPlayer={selectedPlayer}
           playerMode={playerMode}
+          kits={kits}
           tool={tool}
           arrowColor={arrowColor}
           drawings={drawings}

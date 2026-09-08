@@ -61,6 +61,53 @@ const hexA = (hex, a) => {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 };
 
+/* ── Kit colours ───────────────────────────────────────────────
+   Users can recolour both teams, so every shade the token needs —
+   the highlight, the base, the rim, and the label ink — is derived
+   from the one chosen colour rather than hard-coded. */
+const DEFAULT_KITS = { home: '#eef1e6', away: '#f43f5e' };
+
+const KIT_PRESETS = [
+  '#eef1e6', '#f43f5e', '#d7ff3c', '#22d3ee', '#2563eb', '#7c3aed',
+  '#fb923c', '#fde047', '#16a34a', '#0f172a', '#94a3b8', '#ec4899',
+];
+
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+const toRgb = (hex) => {
+  const h = (hex || '#000000').replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+};
+const toHex = ({ r, g, b }) =>
+  '#' + [r, g, b].map(v => Math.round(clamp01(v / 255) * 255).toString(16).padStart(2, '0')).join('');
+
+/** Mix toward white (k > 0) or black (k < 0). */
+const shade = (hex, k) => {
+  const { r, g, b } = toRgb(hex);
+  const t = k > 0 ? 255 : 0;
+  const a = Math.abs(k);
+  return toHex({ r: r + (t - r) * a, g: g + (t - g) * a, b: b + (t - b) * a });
+};
+
+/** WCAG relative luminance — picks ink that stays legible on any kit. */
+const luminance = (hex) => {
+  const { r, g, b } = toRgb(hex);
+  const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+};
+const readableInk = (hex) => (luminance(hex) > 0.42 ? '#141a0a' : '#ffffff');
+
+/** Everything a team's tokens and markers need, from one hex. */
+const kitPalette = (hex) => ({
+  base: hex,
+  hi:   shade(hex, 0.42),
+  lo:   shade(hex, -0.22),
+  ring: shade(hex, -0.38),
+  ink:  readableInk(hex),
+  // Structure lines sit on turf, so very dark kits get lifted for contrast.
+  line: luminance(hex) < 0.12 ? shade(hex, 0.55) : hex,
+});
+
 // Pitch surface skins. `grass` is the default broadcast turf; `dark` is the
 // night-slate surface used by Dark Pitch mode.
 const PITCH_SKINS = {
@@ -84,7 +131,7 @@ const SHAPE_BANDS = [
   ['CDM', 'CM', 'CAM', 'LM', 'RM'],       // midfield
   ['LW', 'ST', 'RW', 'CF'],               // attack
 ];
-const SHAPE_LINE_COLORS = { home: '#f4f6ef', away: '#ff4d6d' };
+/* Structure lines follow each team's kit — see `kitPalette().line`. */
 
 // Balance Symmetry: mirrored role pairs, then central roles paired outside-in.
 const MIRROR_PAIRS = [['LB', 'RB'], ['LWB', 'RWB'], ['LM', 'RM'], ['LW', 'RW']];
@@ -203,14 +250,14 @@ function buildFormation(key) {
   const players = [];
   formation.forEach(([label, x, y], i) => {
     players.push({
-      id: `h${i}`, team: 'home', label, number: i === 0 ? 1 : i + 1, face: null,
+      id: `h${i}`, team: 'home', label, number: i === 0 ? 1 : i + 1, face: null, name: '',
       pos: { inPossession: { x, y }, outOfPossession: { x, y } },
       arrowDir: null, speed: 6, press: 6,
     });
   });
   formation.forEach(([label, x, y], i) => {
     players.push({
-      id: `a${i}`, team: 'away', label, number: i === 0 ? 1 : i + 1, face: null,
+      id: `a${i}`, team: 'away', label, number: i === 0 ? 1 : i + 1, face: null, name: '',
       pos: { inPossession: { x: mirrorX(x), y }, outOfPossession: { x: mirrorX(x), y } },
       arrowDir: null, speed: 6, press: 6,
     });
@@ -247,7 +294,7 @@ function getSVGPoint(svg, evt) {
 /* =============================================================
    PITCH LINES
    ============================================================= */
-function PitchLines({ showChannels, showDefLine, defLines, playing, animating, skin = PITCH_SKINS.grass }) {
+function PitchLines({ showChannels, showDefLine, defLines, playing, animating, skin = PITCH_SKINS.grass, kitPal }) {
   // Smoothly translate the def-line group via CSS transform when animating
   // so it doesn't teleport between phases like x1/x2 attribute changes do.
   const lineTrans = animating ? `transform ${PHASE_DURATION}ms linear` : 'none';
@@ -303,11 +350,11 @@ function PitchLines({ showChannels, showDefLine, defLines, playing, animating, s
       {showDefLine && defLines.home != null && (
         <g style={{ transform: `translate(${defLines.home}px, 0px)`, transition: lineTrans }}>
           <line x1={0} y1={20} x2={0} y2={PITCH_H - 20}
-            stroke={COLORS.home} strokeWidth={2} strokeDasharray="8 6" opacity={0.85} />
+            stroke={kitPal.home.base} strokeWidth={2} strokeDasharray="8 6" opacity={0.85} />
           <rect x={-36} y={26} width={72} height={18} rx={3}
-            fill={COLORS.home} opacity={0.92} />
+            fill={kitPal.home.base} opacity={0.92} />
           <text x={0} y={39} textAnchor="middle" fontSize={10} fontWeight={800}
-            fill={COLORS.homeText} letterSpacing="1.5"
+            fill={kitPal.home.ink} letterSpacing="1.5"
             style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
             HOME LINE
           </text>
@@ -316,11 +363,11 @@ function PitchLines({ showChannels, showDefLine, defLines, playing, animating, s
       {showDefLine && defLines.away != null && (
         <g style={{ transform: `translate(${defLines.away}px, 0px)`, transition: lineTrans }}>
           <line x1={0} y1={20} x2={0} y2={PITCH_H - 20}
-            stroke={COLORS.away} strokeWidth={2} strokeDasharray="8 6" opacity={0.85} />
+            stroke={kitPal.away.base} strokeWidth={2} strokeDasharray="8 6" opacity={0.85} />
           <rect x={-36} y={26} width={72} height={18} rx={3}
-            fill={COLORS.away} opacity={0.92} />
+            fill={kitPal.away.base} opacity={0.92} />
           <text x={0} y={39} textAnchor="middle" fontSize={10} fontWeight={800}
-            fill={COLORS.awayText} letterSpacing="1.5"
+            fill={kitPal.away.ink} letterSpacing="1.5"
             style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
             AWAY LINE
           </text>
@@ -349,18 +396,20 @@ function PitchLines({ showChannels, showDefLine, defLines, playing, animating, s
    ============================================================= */
 function PlayerToken({
   player, x, y, selected, dragging, animating, showStats, showMovementArrows, playerMode,
-  onPointerDown, onContextMenu, onDoubleClick,
+  pal, onPointerDown, onContextMenu, onDoubleClick,
 }) {
   const isHome = player.team === 'home';
   const kit = isHome ? 'url(#kitHome)' : 'url(#kitAway)';
-  const ring = isHome ? COLORS.homeRing : COLORS.awayRing;
-  const labelFill = isHome ? COLORS.homeText : COLORS.awayText;
+  const ring = pal.ring;
+  const labelFill = pal.ink;
   const transition = animating ? `transform ${PHASE_DURATION}ms linear` : 'none';
   const face = player.face;
   const showHeadshot = playerMode && face;
 
+  // A typed-in name wins over the assigned face's name; the plate shows
+  // whichever is set, so custom names work with Player Mode off.
+  const nameText = player.name?.trim() || (playerMode && face ? face.name : '');
   // tight name label width: char count × 6.2px + padding, min 36
-  const nameText = face?.name || '';
   const nameWidth = Math.max(36, nameText.length * 6.4 + 12);
 
   return (
@@ -445,7 +494,7 @@ function PlayerToken({
         </Fragment>
       )}
 
-      {playerMode && face && (
+      {nameText && (
         <g pointerEvents="none">
           <rect x={-nameWidth/2} y={PLAYER_R + 4} width={nameWidth} height={14} rx={2}
             fill="rgba(0,0,0,0.85)"
@@ -457,7 +506,7 @@ function PlayerToken({
         </g>
       )}
 
-      {showStats && !playerMode && (
+      {showStats && !nameText && (
         <g pointerEvents="none">
           <rect x={-22} y={PLAYER_R + 4} width={44} height={13} rx={2}
             fill="rgba(0,0,0,0.78)" stroke="rgba(255,255,255,0.18)" strokeWidth={1} />
@@ -487,7 +536,7 @@ function PlayerToken({
    the coordinate map with rAF (linear, matching the tokens' easing)
    so the lines glide in lockstep with the players.
    ============================================================= */
-function ShapeLines({ players, positions, editingTeam, animating, tool, onBandPointerDown }) {
+function ShapeLines({ players, positions, editingTeam, animating, tool, kitPal, onBandPointerDown }) {
   const [tweened, setTweened] = useState(positions);
   const curRef = useRef(positions);   // what's currently on screen
   const rafRef = useRef(null);
@@ -540,7 +589,7 @@ function ShapeLines({ players, positions, editingTeam, animating, tool, onBandPo
       {teams.map(team => {
         const squad = players.filter(p => p.team === team && has(p));
         const byLabel = (...labels) => squad.filter(p => labels.includes(p.label));
-        const c = SHAPE_LINE_COLORS[team];
+        const c = kitPal[team].line;
 
         /* ── Progression linkers (faint) ─────────────────────────
            Fullbacks → wide mids, and centre-backs → the pivot
@@ -1056,7 +1105,40 @@ const THEME_OPTIONS = [
   { id: 'system', label: 'System', desc: 'Follow OS',              dots: ['#0c0c0d', '#edefe6', '#567a00'] },
 ];
 
-function DisplayOptionsModal({ open, onClose, opts, setOpts, theme, setTheme }) {
+function KitPicker({ label, value, onChange }) {
+  return (
+    <div className="p-2.5 rounded-lg bg-ink/[0.03] border border-ink/10">
+      <div className="flex items-center gap-2 mb-2">
+        <label className="relative w-8 h-8 rounded-full flex-shrink-0 cursor-pointer border border-ink/20 overflow-hidden"
+          style={{ background: value }}
+          title={`${label} kit colour`}>
+          <input type="color" value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className="absolute inset-0 opacity-0 cursor-pointer" />
+        </label>
+        <div className="flex-1 min-w-0">
+          <div className="text-[11px] font-extrabold tracking-wider"
+            style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>{label}</div>
+          <div className="text-[9px] text-dim font-mono uppercase">{value}</div>
+        </div>
+      </div>
+      <div className="grid grid-cols-6 gap-1">
+        {KIT_PRESETS.map(c => (
+          <button key={c} onClick={() => onChange(c)} title={c}
+            aria-label={`${label} kit ${c}`}
+            className={`h-5 rounded border transition ${
+              value.toLowerCase() === c.toLowerCase()
+                ? 'border-accent ring-1 ring-accent/50'
+                : 'border-ink/15 hover:border-ink/40'
+            }`}
+            style={{ background: c }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DisplayOptionsModal({ open, onClose, opts, setOpts, theme, setTheme, kits, setKits }) {
   if (!open) return null;
   const flag = (key) => opts[key];
   const toggle = (key) => setOpts(o => ({ ...o, [key]: !o[key] }));
@@ -1097,6 +1179,26 @@ function DisplayOptionsModal({ open, onClose, opts, setOpts, theme, setTheme }) 
               </button>
             );
           })}
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-[10px] font-extrabold text-mute tracking-widest"
+            style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+            TEAM KITS
+          </div>
+          <button onClick={() => setKits(DEFAULT_KITS)}
+            className="text-[9px] font-extrabold tracking-wider px-2 py-0.5 bg-ink/5 hover:bg-ink/15 border border-ink/10 rounded"
+            style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+            RESET
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <KitPicker label="HOME" value={kits.home}
+            onChange={(c) => setKits(k => ({ ...k, home: c }))} />
+          <KitPicker label="AWAY" value={kits.away}
+            onChange={(c) => setKits(k => ({ ...k, away: c }))} />
         </div>
       </div>
 
@@ -1259,7 +1361,9 @@ function ModalShell({ title, subtitle, onClose, children, wide }) {
 function TacticsBuilder({ session, profile, signOut }) {
   const [players, setPlayers] = useState(() => buildFormation('4-3-3'));
   const [possessionMode, setPossessionMode] = useState('inPossession');
-  const [editingTeam, setEditingTeam] = useState('both');
+  // Opens on the home side alone — a single shape is the common starting
+  // point, and the opposition is one click away.
+  const [editingTeam, setEditingTeam] = useState('home');
   // phases is a growable array — start with 4 empty slots, user can add more
   const [phases, setPhases] = useState([null, null, null, null]);
   const [currentPhase, setCurrentPhase] = useState(-1);
@@ -1290,7 +1394,24 @@ function TacticsBuilder({ session, profile, signOut }) {
   const [drawingArrow, setDrawingArrow] = useState(null);
   const [drawingZone, setDrawingZone] = useState(null);
   const [drawingShape, setDrawingShape] = useState(null);
-  const [showSidePanel, setShowSidePanel] = useState(true);
+  // Phones and iPad-portrait can't spare 340px beside the pitch, so the panel
+  // starts closed there and floats over the board when opened rather than
+  // squeezing it. 1024px is the breakpoint where both fit comfortably.
+  const NARROW_Q = '(max-width: 1023px)';
+  const [isNarrow, setIsNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(NARROW_Q).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW_Q);
+    const onChange = (e) => setIsNarrow(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else mq.addListener(onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+      else mq.removeListener(onChange);
+    };
+  }, []);
+  const [showSidePanel, setShowSidePanel] = useState(
+    () => !(typeof window !== 'undefined' && window.matchMedia(NARROW_Q).matches));
   const [draggingIds, setDraggingIds] = useState([]);  // token pickup scale
   const [exporting, setExporting] = useState(false);
   const [trails, setTrails] = useState([]);
@@ -1309,7 +1430,7 @@ function TacticsBuilder({ session, profile, signOut }) {
     showTrails: false,
     showChannels: false,
     showDefLine: false,
-    showAds: true,
+    showAds: false,
     playerMode: false,
     showBall: true,
     showShapeLines: true,   // positional-structure unit lines (2D)
@@ -1320,6 +1441,21 @@ function TacticsBuilder({ session, profile, signOut }) {
 
   const [showDisplayOpts, setShowDisplayOpts] = useState(false);
   const [showTacticMgmt, setShowTacticMgmt] = useState(false);
+
+  // ── Kit colours ────────────────────────────────────────────────
+  const [kits, setKits] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('nahweeezy_kits') || 'null');
+      return saved?.home && saved?.away ? saved : DEFAULT_KITS;
+    } catch { return DEFAULT_KITS; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('nahweeezy_kits', JSON.stringify(kits)); } catch {}
+  }, [kits]);
+  const kitPal = useMemo(() => ({
+    home: kitPalette(kits.home),
+    away: kitPalette(kits.away),
+  }), [kits]);
 
   // ── Theme ──────────────────────────────────────────────────────
   // Persisted to localStorage; one of 'volt' | 'blue' | 'light' | 'dark' |
@@ -1501,17 +1637,21 @@ function TacticsBuilder({ session, profile, signOut }) {
     }
   };
 
+  // A side's defensive line is only meaningful when that side is on screen —
+  // in Home-only or Away-only mode the hidden team's marker is suppressed.
   const defLines = useMemo(() => {
     const positions = displayedPositions;
-    const homeDefs = players.filter(p => p.team === 'home' && p.label !== 'GK');
-    const awayDefs = players.filter(p => p.team === 'away' && p.label !== 'GK');
-    if (!homeDefs.length || !awayDefs.length) return { home: null, away: null };
-    const homeDeepest = homeDefs.reduce((min, p) =>
-      (positions[p.id]?.x ?? p.pos[possessionMode].x) < min ? (positions[p.id]?.x ?? p.pos[possessionMode].x) : min, 999);
-    const awayDeepest = awayDefs.reduce((max, p) =>
-      (positions[p.id]?.x ?? p.pos[possessionMode].x) > max ? (positions[p.id]?.x ?? p.pos[possessionMode].x) : max, 0);
-    return { home: homeDeepest, away: awayDeepest };
-  }, [players, displayedPositions, possessionMode]);
+    const at = (p) => positions[p.id]?.x ?? p.pos[possessionMode].x;
+    const outfield = (team) => (editingTeam === 'both' || editingTeam === team)
+      ? players.filter(p => p.team === team && p.label !== 'GK')
+      : [];
+    const homeDefs = outfield('home');
+    const awayDefs = outfield('away');
+    return {
+      home: homeDefs.length ? homeDefs.reduce((min, p) => Math.min(min, at(p)), Infinity) : null,
+      away: awayDefs.length ? awayDefs.reduce((max, p) => Math.max(max, at(p)), -Infinity) : null,
+    };
+  }, [players, displayedPositions, possessionMode, editingTeam]);
 
   const formationLabel = useMemo(() => {
     if (currentPhase >= 0) return `PHASE ${currentPhase + 1}`;
@@ -2315,16 +2455,14 @@ function TacticsBuilder({ session, profile, signOut }) {
           </pattern>
           {opts.showAds && <AdBoardDefs ads={DEFAULT_ADS} />}
           {/* kit shading — off-center light source for a 3D shirt read */}
-          <radialGradient id="kitHome" cx="35%" cy="30%" r="85%">
-            <stop offset="0%" stopColor="#ffffff" />
-            <stop offset="65%" stopColor="#eef1e6" />
-            <stop offset="100%" stopColor="#c6cdb9" />
-          </radialGradient>
-          <radialGradient id="kitAway" cx="35%" cy="30%" r="85%">
-            <stop offset="0%" stopColor="#ff7d92" />
-            <stop offset="60%" stopColor="#f43f5e" />
-            <stop offset="100%" stopColor="#b31237" />
-          </radialGradient>
+          {['home', 'away'].map(team => (
+            <radialGradient key={team} id={`kit${team === 'home' ? 'Home' : 'Away'}`}
+              cx="35%" cy="30%" r="85%">
+              <stop offset="0%"   stopColor={kitPal[team].hi} />
+              <stop offset="62%"  stopColor={kitPal[team].base} />
+              <stop offset="100%" stopColor={kitPal[team].lo} />
+            </radialGradient>
+          ))}
         </defs>
 
         {/* All visible content lives inside this `<g>`. When `opts.vertical`
@@ -2350,7 +2488,7 @@ function TacticsBuilder({ session, profile, signOut }) {
         <rect x={-8} y={-8} width={PITCH_W + 16} height={PITCH_H + 16}
           fill="none" stroke={skin.frame} strokeWidth={2} rx={4} />
 
-        <PitchLines showChannels={opts.showChannels} showDefLine={opts.showDefLine} defLines={defLines} playing={playing} animating={animating} skin={skin} />
+        <PitchLines showChannels={opts.showChannels} showDefLine={opts.showDefLine} defLines={defLines} playing={playing} animating={animating} skin={skin} kitPal={kitPal} />
 
         {/* Subtle grass-nap pattern over the pitch */}
         <rect x={0} y={0} width={PITCH_W} height={PITCH_H}
@@ -2395,7 +2533,7 @@ function TacticsBuilder({ session, profile, signOut }) {
         {opts.showShapeLines && (
           <ShapeLines players={players} positions={positions}
             editingTeam={editingTeam} animating={animating}
-            tool={tool}
+            tool={tool} kitPal={kitPal}
             onBandPointerDown={mode === possessionMode ? beginDragBand : undefined} />
         )}
 
@@ -2468,6 +2606,7 @@ function TacticsBuilder({ session, profile, signOut }) {
                 showStats={opts.showStats}
                 showMovementArrows={opts.showMovementArrows}
                 playerMode={opts.playerMode}
+                pal={kitPal[p.team]}
                 onPointerDown={beginDragPlayer}
                 onContextMenu={handleContextMenu}
                 onDoubleClick={handleDoubleClick}
@@ -2490,9 +2629,11 @@ function TacticsBuilder({ session, profile, signOut }) {
 
   /* ── Selected ────────────────────────────────────────────── */
   const sel = selectedPlayer ? players.find(p => p.id === selectedPlayer) : null;
+  const patchSelected = (patch) =>
+    setPlayers(prev => prev.map(p => p.id === selectedPlayer ? { ...p, ...patch } : p));
   const updateSelected = (patch) => {
     pushHistory();
-    setPlayers(prev => prev.map(p => p.id === selectedPlayer ? { ...p, ...patch } : p));
+    patchSelected(patch);
   };
 
   const phaseSavedCount = phases.filter(Boolean).length;
@@ -2540,9 +2681,9 @@ function TacticsBuilder({ session, profile, signOut }) {
 
         <div className="flex items-center bg-well/40 rounded p-0.5 border border-ink/10">
           {[
-            ['home', 'H', COLORS.home, COLORS.homeText],
+            ['home', 'H', kitPal.home.base, kitPal.home.ink],
             ['both', 'BOTH', '#e2e8f0', '#0f172a'],
-            ['away', 'A', COLORS.away, COLORS.awayText],
+            ['away', 'A', kitPal.away.base, kitPal.away.ink],
           ].map(([key, label, bg, fg]) => (
             <button key={key} onClick={() => setEditingTeam(key)}
               className="px-2 py-1.5 text-[11px] font-black rounded transition"
@@ -2757,6 +2898,7 @@ function TacticsBuilder({ session, profile, signOut }) {
                     drawingZone={drawingZone}
                     customStadium={opts.customStadium}
                     animating={animating}
+                    kits={kits}
                   />
                 </Suspense>
               </ErrorBoundary>
@@ -2870,8 +3012,18 @@ function TacticsBuilder({ session, profile, signOut }) {
           </div>
         </main>
 
-        {/* SIDE PANEL */}
-        <aside className={`border-l border-ink/10 bg-s1 transition-all overflow-auto rise d3 ${showSidePanel ? 'w-[340px]' : 'w-12'}`}>
+        {/* Dim the board behind the drawer so the panel reads as a layer. */}
+        {isNarrow && showSidePanel && (
+          <div className="fixed inset-0 z-30 bg-black/50 backdrop-fade"
+            onClick={() => setShowSidePanel(false)} />
+        )}
+
+        {/* SIDE PANEL — in-flow column on desktop, floating drawer when narrow */}
+        <aside className={`border-l border-ink/10 bg-s1 transition-all overflow-auto rise d3 ${
+          isNarrow && showSidePanel
+            ? 'fixed top-0 right-0 bottom-0 z-40 w-[min(340px,86vw)] shadow-2xl'
+            : showSidePanel ? 'w-[340px]' : 'w-12'
+        }`}>
           <button onClick={() => setShowSidePanel(s => !s)}
             className="w-full px-3 py-2.5 text-[10px] font-black tracking-[0.3em] text-mute hover:text-ink hover:bg-ink/5 border-b border-ink/10 flex items-center gap-2"
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
@@ -2904,8 +3056,8 @@ function TacticsBuilder({ session, profile, signOut }) {
                     <div className="flex items-center gap-2 mb-3">
                       <span className="w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-black flex-shrink-0 overflow-hidden relative"
                         style={{
-                          background: sel.team === 'home' ? COLORS.home : COLORS.away,
-                          color: sel.team === 'home' ? COLORS.homeText : COLORS.awayText,
+                          background: kitPal[sel.team].base,
+                          color: kitPal[sel.team].ink,
                           fontFamily: '"Uni Sans Heavy", Oswald, sans-serif',
                           boxShadow: '0 0 14px rgba(215,255,60,0.25)',
                         }}>
@@ -2925,12 +3077,32 @@ function TacticsBuilder({ session, profile, signOut }) {
                         <div className="text-sm font-extrabold text-ink tracking-wide truncate"
                           title={sel.face ? sel.face.fullName : undefined}
                           style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
-                          {sel.face ? sel.face.fullName : `Player ${sel.label}`}
+                          {sel.name?.trim() || (sel.face ? sel.face.fullName : `Player ${sel.label}`)}
                         </div>
                       </div>
                       <button onClick={() => setSelectedPlayer(null)}
                         className="w-6 h-6 rounded bg-ink/5 hover:bg-ink/15 text-mute hover:text-ink text-sm leading-none">×</button>
                     </div>
+
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="text-[10px] font-extrabold text-accent tracking-[0.25em]"
+                        style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>NAME</div>
+                      {sel.name && (
+                        <button onClick={() => updateSelected({ name: '' })}
+                          className="text-[9px] font-extrabold tracking-wider text-mute hover:text-ink"
+                          style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
+                          CLEAR
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      value={sel.name || ''}
+                      /* One undo step per editing session, not per keystroke. */
+                      onFocus={pushHistory}
+                      onChange={(e) => patchSelected({ name: e.target.value.slice(0, 24) })}
+                      placeholder={sel.face ? sel.face.name : 'Add a name…'}
+                      maxLength={24}
+                      className="w-full mb-3 bg-well/50 border border-ink/10 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-accent" />
 
                     <div className="text-[10px] font-extrabold text-accent tracking-[0.25em] mb-1.5"
                       style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>POSITION</div>
@@ -2972,7 +3144,7 @@ function TacticsBuilder({ session, profile, signOut }) {
                 <section className="p-3 rounded-lg bg-ink/[0.02] border border-dashed border-ink/10 text-center">
                   <div className="text-[24px] mb-1">⚽</div>
                   <div className="text-[11px] text-mute leading-snug">
-                    Click a player on the pitch to edit their position, stats and assign a real Premier League player.
+                    Click a player on the pitch to name them, edit their position and stats, or assign a real player's face.
                   </div>
                 </section>
               )}
@@ -3053,6 +3225,7 @@ function TacticsBuilder({ session, profile, signOut }) {
         onClose={() => setShowDisplayOpts(false)}
         opts={opts} setOpts={setOpts}
         theme={theme} setTheme={chooseTheme}
+        kits={kits} setKits={setKits}
       />
       <TacticManagementModal
         open={showTacticMgmt}
