@@ -1718,7 +1718,12 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
     if (!opts.vertical) return pt;
     const cx = VB_X + VB_W / 2;
     const cy = VB_Y + VB_H / 2;
-    return { x: cx + cy - pt.y, y: pt.x + cy - cx };
+    // Content is drawn under `rotate(90 cx cy)`, which maps a content point
+    // (x, y) to screen (cx + cy - y, cy + x - cx). Going the other way — which
+    // is what a pointer needs — is the inverse of that, not the same formula
+    // again. Applying the forward map here mirrored x about the centre, so
+    // everything drawn in vertical mode landed on the opposite side.
+    return { x: cx + pt.y - cy, y: cx + cy - pt.x };
   };
 
   /* ── PURE-coordinate handlers (called by both 2D and 3D views) ── */
@@ -1854,13 +1859,53 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
   };
 
   /* ── 2D event-driven wrappers ───────────────────────────────── */
+
+  // Window-level drag tracking.
+  //
+  // Move/up used to be bound to the <svg> with setPointerCapture. On touch
+  // that combination is unreliable: the pointer stream can retarget or be
+  // captured out from under the element, and Safari has long-standing bugs
+  // with pointer capture on SVG nodes — the drag would start and then never
+  // receive another event, which is exactly how it failed on iOS. Binding to
+  // `window` for the life of the gesture is immune to hit-testing and
+  // re-renders, and pointercancel (which iOS fires readily) can no longer
+  // strand a drag half-open.
+  //
+  // The listeners are armed once per gesture, so they must not close over
+  // stale state — they read the current handlers out of this ref, which is
+  // refreshed every render.
+  const liveHandlers = useRef({});
+
+  const disarmDragRef = useRef(null);
+  const armDragListeners = useCallback(() => {
+    if (disarmDragRef.current) return;
+    const onMove = (e) => {
+      if (!dragRef.current) return;
+      // Stops iOS from turning the gesture into a page pan mid-drag.
+      if (e.cancelable) e.preventDefault();
+      const h = liveHandlers.current;
+      h.continueDragOrDraw(h.getPitchPoint(e), e.shiftKey);
+    };
+    const onEnd = () => liveHandlers.current.endDragOrDraw();
+    window.addEventListener('pointermove', onMove, { passive: false });
+    window.addEventListener('pointerup', onEnd);
+    window.addEventListener('pointercancel', onEnd);
+    disarmDragRef.current = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onEnd);
+      window.removeEventListener('pointercancel', onEnd);
+      disarmDragRef.current = null;
+    };
+  }, []);
+  // Never leave listeners bound if the component unmounts mid-drag.
+  useEffect(() => () => disarmDragRef.current?.(), []);
+
   const beginDragPlayer = (e, id) => {
     if (playing) return;
     if (tool !== 'select') return;
     e.stopPropagation(); e.preventDefault();
-    const svg = svgRef.current;
     startPlayerDrag(id, getPitchPoint(e), e.shiftKey);
-    if (svg?.setPointerCapture) { try { svg.setPointerCapture(e.pointerId); } catch {} }
+    armDragListeners();
   };
 
   // Grab a positional-structure line → move that entire unit.
@@ -1870,29 +1915,62 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
     setSelectedIds(ids);
     track.unitDragged(ids.length);
     startGroupDrag(ids, getPitchPoint(e));
-    const svg = svgRef.current;
-    if (svg?.setPointerCapture) { try { svg.setPointerCapture(e.pointerId); } catch {} }
+    armDragListeners();
   };
 
   const beginDragBall = (e) => {
     if (playing) return;
     if (tool !== 'select') return;
     e.stopPropagation(); e.preventDefault();
-    const svg = svgRef.current;
     startBallDrag(getPitchPoint(e));
-    if (svg?.setPointerCapture) { try { svg.setPointerCapture(e.pointerId); } catch {} }
+    armDragListeners();
+  };
+
+  // Touch hit-testing can resolve to the <svg> rather than the token that was
+  // visually under the finger, so a tap would fall through to "deselect" and a
+  // drag would never begin. Rather than trusting the DOM target, find the
+  // nearest player geometrically. Coarse pointers get a wider radius, since a
+  // fingertip is far bigger than the 17px token it is aiming at.
+  const pickPlayerAt = (pt) => {
+    const coarse = typeof window !== 'undefined'
+      && window.matchMedia?.('(pointer: coarse)').matches;
+    const reach = coarse ? PLAYER_R * 2.2 : PLAYER_R + 2;
+    let best = null, bestD = Infinity;
+    for (const p of players) {
+      if (editingTeam !== 'both' && p.team !== editingTeam) continue;
+      const pos = displayedPositions[p.id];
+      if (!pos) continue;
+      const d = Math.hypot(pos.x - pt.x, pos.y - pt.y);
+      if (d < reach && d < bestD) { bestD = d; best = p.id; }
+    }
+    return best;
   };
 
   const onPitchPointerDown = (e) => {
+    if (e.target.closest && e.target.closest('a[data-ad]')) return;
+    // A token or the ball handled it already (mouse path) — don't double-fire.
     if (e.target.closest && e.target.closest('g[data-player]')) return;
     if (e.target.closest && e.target.closest('g[data-ball]')) return;
-    if (e.target.closest && e.target.closest('a[data-ad]')) return;
-    startPitchAction(getPitchPoint(e));
-  };
 
-  const onPointerMove = (e) => {
-    if (!dragRef.current) return;
-    continueDragOrDraw(getPitchPoint(e), e.shiftKey);
+    const pt = getPitchPoint(e);
+    if (tool === 'select' && !playing) {
+      const hit = pickPlayerAt(pt);
+      if (hit) {
+        e.preventDefault();
+        startPlayerDrag(hit, pt, e.shiftKey);
+        armDragListeners();
+        return;
+      }
+      if (opts.showBall && Math.hypot(displayedBall.x - pt.x, displayedBall.y - pt.y) < BALL_R * 2.5) {
+        e.preventDefault();
+        startBallDrag(pt);
+        armDragListeners();
+        return;
+      }
+    }
+    startPitchAction(pt);
+    // Drawing tools track their gesture through the same window listeners.
+    if (dragRef.current) armDragListeners();
   };
 
   // Move an existing shape object with the select tool.
@@ -1908,8 +1986,7 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
       orig: { x: shape.x, y: shape.y },
       w: shape.w, h: shape.h,
     };
-    const svg = svgRef.current;
-    if (svg?.setPointerCapture) { try { svg.setPointerCapture(e.pointerId); } catch {} }
+    armDragListeners();
   };
 
   const endDragOrDraw = () => {
@@ -1951,9 +2028,12 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
     }
     dragRef.current = null;
     setDraggingIds([]);
+    disarmDragRef.current?.();
   };
-  // 2D wrapper for SVG onPointerUp/onPointerLeave
-  const onPointerUp = () => endDragOrDraw();
+
+  // Refreshed every render so the once-armed window listeners never act on a
+  // stale closure (drawingArrow/drawingZone change during a gesture).
+  liveHandlers.current = { continueDragOrDraw, endDragOrDraw, getPitchPoint };
 
   /* ── Player handlers ─────────────────────────────────────── */
   const handleContextMenu = (e, id) => {
@@ -2462,9 +2542,6 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
             tool === 'eraser' ? 'not-allowed' : 'default',
         }}
         onPointerDown={mode === possessionMode ? onPitchPointerDown : undefined}
-        onPointerMove={mode === possessionMode ? onPointerMove : undefined}
-        onPointerUp={mode === possessionMode ? onPointerUp : undefined}
-        onPointerLeave={mode === possessionMode ? onPointerUp : undefined}
       >
         <defs>
           {Object.entries(ARROW_COLORS).map(([key, c]) => (

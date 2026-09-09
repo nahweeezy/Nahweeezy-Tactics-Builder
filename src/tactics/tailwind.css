@@ -192,6 +192,18 @@ html[data-theme="light"] .app-shell::after { opacity: 0.035; }
 }
 
 /* ── Details ─────────────────────────────────────────────────── */
+/* Safari resolves touch-action from the hit element upward, and an SVG child
+   defaulting to `auto` is enough for iOS to claim the gesture as a page pan
+   and cancel the pointer stream mid-drag. Pin it on the pitch and everything
+   inside it. `none` is right here: the board is a drag surface, not a
+   scrollable one. */
+.pitch-clip,
+.pitch-clip * {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .pitch-clip {
   clip-path: polygon(
     14px 0, calc(100% - 14px) 0,
