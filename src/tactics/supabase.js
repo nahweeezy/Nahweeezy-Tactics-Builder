@@ -3,22 +3,33 @@ import { createClient } from '@supabase/supabase-js';
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!url || !key) {
-  // Fail loudly in dev — Vercel will catch missing env vars at runtime in console.
+/** True when real credentials were baked in at build time. */
+export const supabaseConfigured = Boolean(url && key && /^https?:\/\//.test(url));
+
+if (!supabaseConfigured) {
   // eslint-disable-next-line no-console
   console.error(
-    '[supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. ' +
-    'Copy .env.example to .env (and set them on Vercel).'
+    '[supabase] Missing or invalid VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY. ' +
+    'Auth and the community feed are disabled; the board itself still works. ' +
+    'Set them in .env locally, or as repository secrets for the deploy.'
   );
 }
 
-export const supabase = createClient(url ?? '', key ?? '', {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
+// `createClient` throws synchronously on an empty url, which would take the
+// whole bundle down and render a blank page — the exact failure mode of a
+// deploy whose env vars were never configured. A placeholder keeps the module
+// importable so the board loads and only the backend-backed features degrade.
+export const supabase = createClient(
+  supabaseConfigured ? url : 'https://placeholder.supabase.co',
+  supabaseConfigured ? key : 'placeholder-anon-key',
+  {
+    auth: {
+      autoRefreshToken: supabaseConfigured,
+      persistSession: supabaseConfigured,
+      detectSessionInUrl: supabaseConfigured,
+    },
   },
-});
+);
 
 /** Fetch the profile row for a uid. Returns null if missing. */
 export async function fetchProfile(userId) {

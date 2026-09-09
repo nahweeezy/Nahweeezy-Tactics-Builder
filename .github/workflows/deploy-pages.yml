@@ -1,0 +1,73 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Lets you re-deploy from the Actions tab without pushing a commit.
+  workflow_dispatch:
+
+# GITHUB_TOKEN needs write access to Pages; id-token is required by deploy-pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race. In-progress runs finish so a partial upload is
+# never published.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` needs a lockfile; fall back so the first deploy works either way.
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      - name: Build
+        env:
+          # A project site is served from https://<user>.github.io/<repo>/, so
+          # the bundle has to be built for that sub-path. Serving from a custom
+          # domain or a <user>.github.io repo instead? Set this to "/".
+          VITE_BASE: /${{ github.event.repository.name }}/
+          # Vite inlines these at build time, so they must exist here rather
+          # than at runtime. The Supabase anon key is designed to ship in
+          # client code — row-level security is what actually guards the data.
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID }}
+        run: npm run build
+
+      - name: Add Pages control files
+        run: |
+          # Without .nojekyll, Pages runs the output through Jekyll and drops
+          # any file or directory beginning with an underscore.
+          touch dist/.nojekyll
+          # Pages has no rewrites, so an unknown path (including the /tactics
+          # alias that vercel.json provides) would hit a bare 404. Send those
+          # to the landing page instead.
+          cp dist/index.html dist/404.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

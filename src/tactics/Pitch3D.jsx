@@ -6,6 +6,7 @@ import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import ErrorBoundary from './ErrorBoundary';
 import { faceUrl } from './faces';
 import { track } from './analytics';
+import { asset } from './assets';
 
 // ── Custom stadium (.dae) configuration ────────────────────────────
 // Drop your COLLADA file at: public/assets/models/stadium.dae
@@ -15,7 +16,7 @@ import { track } from './analytics';
 // centred on origin). The bounding box is logged to the console after
 // the first load to help you pick a scale.
 const STADIUM_MODEL = {
-  url:      '/assets/models/stadium.dae',
+  url:      asset('assets/models/stadium.dae'),
   // When `autoFit` is true the loaded model is automatically scaled so its
   // longest horizontal dimension equals `targetSize` units, then centred
   // horizontally and dropped onto the pitch (its lowest point at y=0).
@@ -43,7 +44,7 @@ const STADIUM_MODEL = {
 // PBR texture rebinding for Assimp-exported COLLADA models that lost their
 // material→texture links during export. Material name (from the .dae's
 // <effect id="X-fx">) maps to the texture set with that prefix.
-const TEX_BASE = '/assets/models/textures';
+const TEX_BASE = asset('assets/models/textures');
 const TEXTURE_SETS = {
   Rails:           { albedo:'Rails_albedo.jpg',            normal:'Rails_normal.png',            metallic:'Rails_metallic.jpg',            roughness:'Rails_roughness.jpg' },
   Scaffold_Lights: { albedo:'Scaffold_Lights_albedo.jpg',  normal:'Scaffold_Lights_normal.png',  metallic:'Scaffold_Lights_metallic.jpg',  roughness:'Scaffold_Lights_roughness.jpg', emissive:'Scaffold_Lights_emissive.jpg' },
@@ -242,11 +243,11 @@ function PitchGround() {
 
 // Same ad list our perimeter ad boards use in 2D — keeps both views in sync.
 const NAHWEEEZY_ADS = [
-  { label: 'YouTube',  url: 'https://youtube.com/@Nahweeezy',  icon: '/assets/icons/youtube.png' },
-  { label: 'TikTok',   url: 'https://tiktok.com/@Nahweeezy',   icon: '/assets/icons/tiktok.webp' },
-  { label: 'Discord',  url: 'https://discord.gg/nahweeezy',    icon: '/assets/icons/discord.webp' },
-  { label: 'X',        url: 'https://x.com/Nahweeezy',         icon: '/assets/icons/x.webp' },
-  { label: 'Twitch',   url: 'https://twitch.tv/nahweeezy',     icon: '/assets/icons/twitch.webp' },
+  { label: 'YouTube',  url: 'https://youtube.com/@Nahweeezy',  icon: asset('assets/icons/youtube.png') },
+  { label: 'TikTok',   url: 'https://tiktok.com/@Nahweeezy',   icon: asset('assets/icons/tiktok.webp') },
+  { label: 'Discord',  url: 'https://discord.gg/nahweeezy',    icon: asset('assets/icons/discord.webp') },
+  { label: 'X',        url: 'https://x.com/Nahweeezy',         icon: asset('assets/icons/x.webp') },
+  { label: 'Twitch',   url: 'https://twitch.tv/nahweeezy',     icon: asset('assets/icons/twitch.webp') },
 ];
 
 // Loads STADIUM_MODEL.url via ColladaLoader and inserts it into the scene.
@@ -567,13 +568,13 @@ function Ball3D({ position, animating, onPointerDown }) {
   const startTime = useRef(0);
   const lastTarget = useRef(position);
   const albedo = useMemo(() => {
-    const t = new THREE.TextureLoader().load('/assets/icons/jabulani.png');
+    const t = new THREE.TextureLoader().load(asset('assets/icons/jabulani.png'));
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 8;
     return t;
   }, []);
   const normal = useMemo(() => {
-    const t = new THREE.TextureLoader().load('/assets/icons/jabulani_normal.png');
+    const t = new THREE.TextureLoader().load(asset('assets/icons/jabulani_normal.png'));
     return t;
   }, []);
   useEffect(() => {

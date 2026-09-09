@@ -15,7 +15,7 @@ async function render() {
   const session = data?.session;
   if (!session) {
     slot.innerHTML = `
-      <a href="/tactics.html" class="lp-nav-cta lp-nav-cta-auth">
+      <a href="tactics.html" class="lp-nav-cta lp-nav-cta-auth">
         <i class="fa-solid fa-right-to-bracket"></i>
         <span>Login</span>
       </a>`;

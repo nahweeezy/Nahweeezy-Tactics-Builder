@@ -82,6 +82,45 @@ npm run build
 
 > The Supabase anon key is meant to be public — but make sure your Postgres tables have RLS policies enabled (they are in the migration).
 
+## Deploy (GitHub Pages)
+
+`.github/workflows/deploy-pages.yml` builds and publishes on every push to
+`main`. Three one-time setup steps:
+
+1. **Settings → Pages → Source: GitHub Actions.**
+2. **Settings → Secrets and variables → Actions**
+   - Secrets: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+   - Variable: `VITE_GA_MEASUREMENT_ID`
+
+   Vite inlines these at build time, so they have to exist in the workflow —
+   there is no runtime env on Pages. The anon key is meant to ship in client
+   code; RLS is what actually guards the data. Miss them and the board still
+   loads, with auth and the community feed disabled.
+3. **Supabase → Authentication → URL Configuration** — add the deployed
+   tactics URL to the redirect allowlist, or OAuth will bounce.
+
+### Base path
+
+A Pages *project* site is served from `https://<user>.github.io/<repo>/`, not
+from the domain root. The workflow sets `VITE_BASE` to `/<repo>/` and Vite
+rewrites bundled assets accordingly; runtime paths built as plain strings
+(ad-board icons, the ball, the 3D stadium model) go through
+[`src/tactics/assets.js`](src/tactics/assets.js), which reads the same value
+back out of `import.meta.env.BASE_URL`.
+
+Serving from a custom domain or a `<user>.github.io` repo instead? Set
+`VITE_BASE: /` in the workflow. The default with no override is `/`, which is
+what Vercel and `npm run dev` use — nothing about this is Pages-specific.
+
+### What Pages can't do
+
+There are no rewrites, so the `/tactics` alias from `vercel.json` doesn't
+exist — link to `tactics.html`. The workflow copies `index.html` to
+`404.html` so unknown paths land on the landing page rather than a bare 404,
+and drops a `.nojekyll` so Pages doesn't strip underscore-prefixed files.
+
+`vercel.json` is left in place; both targets can run off the same repo.
+
 ## Auth providers
 
 Email/password + Google + Discord OAuth are all wired in. Enable each in **Supabase → Authentication → Providers**, and add your Vercel preview/production URLs to the allowed redirect list:

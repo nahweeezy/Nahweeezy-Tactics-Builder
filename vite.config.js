@@ -14,7 +14,10 @@ export default defineConfig({
       },
     },
   },
-  // FPL API: these proxies are public — no rewriting at build time. Keep
-  // free of base path surprises.
-  base: './',
+  // Deployment root. Vercel and custom domains serve from "/", while a
+  // GitHub Pages *project* site serves from "/<repo>/" — the Pages workflow
+  // sets VITE_BASE accordingly. Runtime asset paths go through
+  // `src/tactics/assets.js`, which reads the same value back out of
+  // import.meta.env.BASE_URL.
+  base: process.env.VITE_BASE || '/',
 });

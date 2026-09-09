@@ -5,6 +5,7 @@ import CommunityTactics from './community/CommunityTactics';
 import { supabase } from './supabase';
 import ErrorBoundary from './ErrorBoundary';
 import { loadFaces, searchFaces, nationsFor, faceUrl, ageFrom } from './faces';
+import { asset } from './assets';
 // Lazy-loaded so the ~1 MB Three.js bundle is only fetched when the user
 // switches to 3D mode.
 const Pitch3D = lazy(() => import('./Pitch3D'));
@@ -159,11 +160,11 @@ const ROLE_TO_FACE_ROLE = {
    AD BOARDS
    ============================================================= */
 const DEFAULT_ADS = [
-  { id: 'yt',    label: 'YOUTUBE',  sub: '@Nahweeezy',   url: 'https://youtube.com/@Nahweeezy',  icon: '/assets/icons/youtube.png',  g1: '#ff0000', g2: '#990000' },
-  { id: 'tt',    label: 'TIKTOK',   sub: '@Nahweeezy',   url: 'https://tiktok.com/@Nahweeezy',   icon: '/assets/icons/tiktok.webp',  g1: '#000000', g2: '#ff0050' },
-  { id: 'dc',    label: 'DISCORD',  sub: 'Join server',  url: 'https://discord.gg/nahweeezy',    icon: '/assets/icons/discord.webp', g1: '#5865f2', g2: '#3a44b8' },
-  { id: 'x',     label: 'X',        sub: '@Nahweeezy',   url: 'https://x.com/Nahweeezy',         icon: '/assets/icons/x.webp',       g1: '#0a0a0a', g2: '#272727' },
-  { id: 'tw',    label: 'TWITCH',   sub: 'Live reacts',  url: 'https://twitch.tv/nahweeezy',     icon: '/assets/icons/twitch.webp',  g1: '#9146ff', g2: '#5c2da3' },
+  { id: 'yt',    label: 'YOUTUBE',  sub: '@Nahweeezy',   url: 'https://youtube.com/@Nahweeezy',  icon: asset('assets/icons/youtube.png'),  g1: '#ff0000', g2: '#990000' },
+  { id: 'tt',    label: 'TIKTOK',   sub: '@Nahweeezy',   url: 'https://tiktok.com/@Nahweeezy',   icon: asset('assets/icons/tiktok.webp'),  g1: '#000000', g2: '#ff0050' },
+  { id: 'dc',    label: 'DISCORD',  sub: 'Join server',  url: 'https://discord.gg/nahweeezy',    icon: asset('assets/icons/discord.webp'), g1: '#5865f2', g2: '#3a44b8' },
+  { id: 'x',     label: 'X',        sub: '@Nahweeezy',   url: 'https://x.com/Nahweeezy',         icon: asset('assets/icons/x.webp'),       g1: '#0a0a0a', g2: '#272727' },
+  { id: 'tw',    label: 'TWITCH',   sub: 'Live reacts',  url: 'https://twitch.tv/nahweeezy',     icon: asset('assets/icons/twitch.webp'),  g1: '#9146ff', g2: '#5c2da3' },
   { id: 'site',  label: 'WEBSITE',  sub: 'nahweeezy.tv', url: '#',                               icon: null,                            g1: '#3b82f6', g2: '#1d4ed8' },
 ];
 
@@ -698,7 +699,7 @@ function Ball({ x, y, animating, onPointerDown }) {
       <circle r={R + 2} fill="rgba(255,255,255,0.12)" />
       {/* the actual puma ball */}
       <image
-        href="/assets/icons/ball.webp"
+        href={asset('assets/icons/ball.webp')}
         x={-R} y={-R}
         width={R * 2} height={R * 2}
         style={{ filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.6))' }}
@@ -2710,7 +2711,7 @@ function TacticsBuilder({ session, profile, signOut }) {
         <div className="absolute left-0 top-0 bottom-0 w-1"
           style={{background: 'linear-gradient(180deg, var(--accent) 0%, var(--accent-deep) 100%)'}} />
 
-        <a href="../index.html" className="flex flex-col group select-none mr-2 ml-1.5">
+        <a href="index.html" className="flex flex-col group select-none mr-2 ml-1.5">
           <span className="text-[10px] font-extrabold tracking-[0.3em] text-accent -mb-1"
             style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif', fontStyle:'italic'}}>NAHWEEEZY'S</span>
           <span className="text-[1.18rem] font-black tracking-[0.14em] leading-none text-ink group-hover:text-accent transition flex items-center gap-1.5"
