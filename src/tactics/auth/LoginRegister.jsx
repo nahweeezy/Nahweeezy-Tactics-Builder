@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../supabase';
-import { track } from '../analytics';
+import { track, trackEvent } from '../analytics';
 
 /**
  * Login + Register modal that floats above a dimmed app background.
@@ -31,6 +31,7 @@ export default function LoginRegister() {
         }
       }
     } catch (err) {
+      trackEvent('auth_error', { method: 'email', mode, reason: String(err?.message || '').slice(0, 80) });
       setError(err.message || 'Something went wrong.');
     } finally {
       setLoading(false);
@@ -43,8 +44,10 @@ export default function LoginRegister() {
       provider,
       options: { redirectTo: window.location.href },
     });
-    if (error) setError(error.message);
-    else track.login(provider);
+    if (error) {
+      trackEvent('auth_error', { method: provider, mode: 'oauth', reason: String(error.message || '').slice(0, 80) });
+      setError(error.message);
+    } else track.login(provider);
   };
 
   return (

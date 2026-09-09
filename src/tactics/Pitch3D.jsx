@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import ErrorBoundary from './ErrorBoundary';
 import { faceUrl } from './faces';
+import { track } from './analytics';
 
 // ── Custom stadium (.dae) configuration ────────────────────────────
 // Drop your COLLADA file at: public/assets/models/stadium.dae
@@ -332,6 +333,7 @@ function StadiumAdsPopup({ onClose }) {
           <div style={{ display:'grid', gap:8 }}>
             {NAHWEEEZY_ADS.map(ad => (
               <a key={ad.label} href={ad.url} target="_blank" rel="noopener noreferrer"
+                onClick={() => track.adBoardClick(ad.label, 'stadium_3d')}
                 style={{
                   display:'flex', alignItems:'center', gap:12,
                   padding:'10px 14px', background:'rgba(255,255,255,0.04)',

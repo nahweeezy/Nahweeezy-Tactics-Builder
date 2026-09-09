@@ -10,12 +10,23 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- Google Analytics 4 -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=%VITE_GA_MEASUREMENT_ID%"></script>
     <script>
+      // The stub is always defined so events fired before GA loads (or when
+      // no id is configured) queue harmlessly instead of throwing. Vite leaves
+      // the %VAR% token verbatim when the env var is unset, so the id is
+      // validated before any request goes out.
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', '%VITE_GA_MEASUREMENT_ID%');
+      (function () {
+        var id = '%VITE_GA_MEASUREMENT_ID%';
+        if (!/^G-[A-Z0-9]{4,}$/i.test(id) || id === 'G-STUB') return;
+        var s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://www.googletagmanager.com/gtag/js?id=' + id;
+        document.head.appendChild(s);
+        gtag('js', new Date());
+        gtag('config', id);
+      })();
     </script>
 </head>
 <body class="lp-body-rebrand">
@@ -46,7 +57,7 @@
             </h1>
             <p class="lp-lede lp-lede-rebrand">
                 A creative tactical sandbox — dual possession shapes, four-phase animations,
-                freehand arrows, a Premier League player picker, and a community feed of shared
+                freehand arrows, ~7,300 real player faces, and a community feed of shared
                 tactics. Built for the matchday whiteboard moments.
             </p>
 

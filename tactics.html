@@ -12,12 +12,23 @@
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 
     <!-- Google Analytics 4 -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=%VITE_GA_MEASUREMENT_ID%"></script>
     <script>
+      // The stub is always defined so events fired before GA loads (or when
+      // no id is configured) queue harmlessly instead of throwing. Vite leaves
+      // the %VAR% token verbatim when the env var is unset, so the id is
+      // validated before any request goes out.
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', '%VITE_GA_MEASUREMENT_ID%');
+      (function () {
+        var id = '%VITE_GA_MEASUREMENT_ID%';
+        if (!/^G-[A-Z0-9]{4,}$/i.test(id) || id === 'G-STUB') return;
+        var s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://www.googletagmanager.com/gtag/js?id=' + id;
+        document.head.appendChild(s);
+        gtag('js', new Date());
+        gtag('config', id);
+      })();
     </script>
 
     <style>

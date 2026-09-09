@@ -97,17 +97,60 @@ Email/password + Google + Discord OAuth are all wired in. Enable each in **Supab
 | `/tactics`       | Tactics builder (login required) — alias for `/tactics.html` via `vercel.json` |
 | `/tactics.html`  | Same page, direct entry                           |
 
-## GA4 events emitted
+## Analytics (GA4)
 
-| Event                  | Payload                                                  |
-|------------------------|----------------------------------------------------------|
-| `tactic_saved`         | local save in Tactic Management                          |
-| `tactic_published`     | when a user publishes to the community                   |
-| `tactic_loaded`        | when loading a community tactic                          |
-| `possession_toggle`    | IP/OOP swap                                              |
-| `phase_animation_play` | pressing ▶ Play                                          |
-| `login`, `sign_up`     | auth events with `method` (email / google / discord)     |
-| `player_search`        | debounced player-picker search                           |
+Set `VITE_GA_MEASUREMENT_ID` and both entry points boot gtag. The id is
+validated first, so an unset var (Vite leaves the `%VAR%` token verbatim) or
+the local `G-STUB` placeholder means **no GA request is made at all** — the
+gtag stub still exists, so every `track.*` call is a safe no-op.
+
+Append `?ga_debug=1` to any URL to log every event to the console instead of
+waiting on GA's DebugView; `?ga_debug=0` clears it. All helpers live in
+[`src/tactics/analytics.js`](src/tactics/analytics.js).
+
+Event names are deliberately few and broad, with the specifics carried in
+parameters — GA4 caps a property at 500 distinct names and reports far better
+on a small, stable set.
+
+| Event | Key params | Fires when |
+|-------|-----------|------------|
+| `app_ready` | `theme`, `dark_pitch`, `viewport`, `signed_in`, `touch` | Builder mounts — the baseline every other event is a delta against |
+| `cta_click` | `cta`, `location` | Landing CTAs, attributed by where they were clicked |
+| `ad_board_click` | `brand`, `placement` | Perimeter / 3D ad boards → your own channels |
+| `login`, `sign_up` | `method` (email / google / discord) | Auth success |
+| `auth_error` | `method`, `mode`, `reason` | Auth failure |
+| `logout`, `username_set` | `where` | Session end / profile created |
+| `formation_loaded` | `formation` | Preset picked |
+| `team_filter_changed` | `team` | H / BOTH / A |
+| `possession_toggle` | `mode` | IP ⇄ OOP |
+| `view_mode_changed` | `mode` | 2D ⇄ 3D |
+| `board_action` | `action` | mirror, balance_symmetry, compare_on/off, undo, redo, clear_overlays |
+| `tool_selected` | `tool` | Toolbar rail |
+| `drawing_created` | `kind`, `color`, `style` | Arrow / shape / zone / text / press placed |
+| `drawing_erased` | `kind` | Eraser used |
+| `player_position_changed` | `from`, `to` | Position grid |
+| `player_named` | `has_face` | Name field committed (once per edit, not per keystroke) |
+| `face_assigned` | `player_id`, `player_name`, `role`, `nation` | Face picked |
+| `face_cleared` | `where` | Face removed |
+| `player_search` | `search_term` | Debounced face-picker search |
+| `players_multi_selected` | `count` | Shift+click selection |
+| `unit_dragged` | `count` | Structure line dragged |
+| `phase_action` | `action`, `index`, `total` | save, clear, rename, add_slot, exit |
+| `phase_animation_play` | `count` | ▶ Play |
+| `display_option_toggled` | `option`, `enabled` | Any Display Options switch |
+| `theme_changed` | `theme` | Theme picker |
+| `kit_changed` | `team`, `color` | Team kit recoloured |
+| `tactic_saved` / `_loaded` / `_deleted` | `where`, `name` | localStorage + community |
+| `tactic_published` | `name`, `status` | Community publish (success **and** error) |
+| `tactic_exported` | `format`, `status`, `faces`, `view`, `ms` | PNG / JSON export, with timing |
+| `community_search` | `search_term` | Debounced community filter |
+
+> Custom parameters (`action`, `tool`, `option`, `theme`, …) only appear in GA4
+> reports once registered under **Admin → Custom definitions**. They're in the
+> raw and BigQuery export either way.
+
+`identify(userId)` sets GA's `user_id` to the Supabase UUID so sessions join
+across devices. The email address is never sent — GA4 prohibits PII.
 
 ## Player Mode (football-faces)
 

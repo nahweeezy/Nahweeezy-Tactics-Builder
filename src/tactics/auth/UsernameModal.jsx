@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { createProfile, supabase } from '../supabase';
+import { track } from '../analytics';
 
 const RX = /^[a-zA-Z0-9_]{3,24}$/;
 
@@ -25,6 +26,7 @@ export default function UsernameModal({ userId, email, onComplete }) {
       setError(msg);
       return;
     }
+    track.usernameSet();
     onComplete();
   };
 

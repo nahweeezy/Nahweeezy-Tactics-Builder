@@ -1,6 +1,6 @@
 /* eslint-disable */
 import { useState, useEffect, useRef, useMemo, useCallback, Fragment, lazy, Suspense } from 'react';
-import { track } from './analytics';
+import { track, identify } from './analytics';
 import CommunityTactics from './community/CommunityTactics';
 import { supabase } from './supabase';
 import ErrorBoundary from './ErrorBoundary';
@@ -847,6 +847,7 @@ function AdBoard({ slot }) {
 
   return (
     <a href={ad.url} target="_blank" rel="noopener noreferrer" data-ad={ad.id}
+       onClick={() => track.adBoardClick(ad.label, orientation === 'h' ? 'perimeter_h' : 'perimeter_v')}
        className="ad-board" style={{ pointerEvents: 'auto' }}>
       <rect x={x} y={y} width={w} height={h} rx={4}
         fill={`url(#${gradId})`} stroke="rgba(255,255,255,0.14)" strokeWidth={1} />
@@ -1141,7 +1142,12 @@ function KitPicker({ label, value, onChange }) {
 function DisplayOptionsModal({ open, onClose, opts, setOpts, theme, setTheme, kits, setKits }) {
   if (!open) return null;
   const flag = (key) => opts[key];
-  const toggle = (key) => setOpts(o => ({ ...o, [key]: !o[key] }));
+  // Tracking stays outside the updater: React may invoke updaters more than
+  // once, which would double-count the event.
+  const toggle = (key) => {
+    track.displayOption(key, !opts[key]);
+    setOpts(o => ({ ...o, [key]: !o[key] }));
+  };
   return (
     <ModalShell title="Display Options" subtitle="Theme, pitch overlays & extras" onClose={onClose}>
       <div className="mb-4">
@@ -1188,7 +1194,7 @@ function DisplayOptionsModal({ open, onClose, opts, setOpts, theme, setTheme, ki
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
             TEAM KITS
           </div>
-          <button onClick={() => setKits(DEFAULT_KITS)}
+          <button onClick={() => { track.kitChanged('reset', ''); setKits(DEFAULT_KITS); }}
             className="text-[9px] font-extrabold tracking-wider px-2 py-0.5 bg-ink/5 hover:bg-ink/15 border border-ink/10 rounded"
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
             RESET
@@ -1196,9 +1202,9 @@ function DisplayOptionsModal({ open, onClose, opts, setOpts, theme, setTheme, ki
         </div>
         <div className="grid grid-cols-2 gap-1.5">
           <KitPicker label="HOME" value={kits.home}
-            onChange={(c) => setKits(k => ({ ...k, home: c }))} />
+            onChange={(c) => { track.kitChanged('home', c); setKits(k => ({ ...k, home: c })); }} />
           <KitPicker label="AWAY" value={kits.away}
-            onChange={(c) => setKits(k => ({ ...k, away: c }))} />
+            onChange={(c) => { track.kitChanged('away', c); setKits(k => ({ ...k, away: c })); }} />
         </div>
       </div>
 
@@ -1267,9 +1273,13 @@ function TacticManagementModal({ open, onClose, current, onLoad }) {
     saveTactics(next); setList(next); setName('');
     track.saveTactic({ name: trimmed, where: 'localStorage' });
   };
-  const doLoad = (entry) => { onLoad(entry.data); onClose(); };
-  const doDelete = (id) => { const next = list.filter(e => e.id !== id); saveTactics(next); setList(next); };
+  const doLoad = (entry) => { track.loadTactic({ where: 'localStorage', name: entry.name }); onLoad(entry.data); onClose(); };
+  const doDelete = (id) => {
+    track.deleteTactic({ where: 'localStorage' });
+    const next = list.filter(e => e.id !== id); saveTactics(next); setList(next);
+  };
   const doExport = (entry) => {
+    track.exportTactic({ format: 'json', status: 'success' });
     const blob = new Blob([JSON.stringify(entry, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1374,9 +1384,13 @@ function TacticsBuilder({ session, profile, signOut }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const selectedPlayer = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
   const setSelectedPlayer = useCallback((id) => setSelectedIds(id ? [id] : []), []);
-  const toggleSelected = useCallback((id) => setSelectedIds(prev => (
-    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-  )), []);
+  const toggleSelected = useCallback((id) => {
+    const next = selectedIds.includes(id)
+      ? selectedIds.filter(x => x !== id)
+      : [...selectedIds, id];
+    if (next.length > 1) track.multiSelect(next.length);
+    setSelectedIds(next);
+  }, [selectedIds]);
   const [tool, setTool] = useState('select');
   const [arrowColor, setArrowColor] = useState('white');
   // 'solid' = run, 'dashed' = pass — stored per arrow when drawn.
@@ -1492,8 +1506,26 @@ function TacticsBuilder({ session, profile, signOut }) {
   // Picking the Dark theme darkens the pitch surface too; any other theme
   // restores grass. Users can still flip Dark Pitch on its own afterwards.
   const chooseTheme = useCallback((id) => {
+    track.themeChanged(id);
     setTheme(id);
     setOpts(o => ({ ...o, darkPitch: id === 'dark' }));
+  }, []);
+
+  // One baseline event per load. Everything else is a delta against this, so
+  // segmenting by theme / device / signed-in state doesn't need a join.
+  const bootedRef = useRef(false);
+  useEffect(() => {
+    if (bootedRef.current) return;
+    bootedRef.current = true;
+    identify(session?.user?.id || null);
+    track.appReady({
+      theme,
+      dark_pitch: opts.darkPitch,
+      viewport: isNarrow ? 'narrow' : 'wide',
+      signed_in: !!session,
+      touch: typeof window !== 'undefined' && 'ontouchstart' in window,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const svgRef = useRef(null);
@@ -1524,11 +1556,13 @@ function TacticsBuilder({ session, profile, signOut }) {
   };
   const undo = () => {
     if (!historyRef.current.length) return;
+    track.boardAction('undo');
     futureRef.current.push(snapshot());
     restore(historyRef.current.pop());
   };
   const redo = () => {
     if (!futureRef.current.length) return;
+    track.boardAction('redo');
     historyRef.current.push(snapshot());
     restore(futureRef.current.pop());
   };
@@ -1739,10 +1773,12 @@ function TacticsBuilder({ session, profile, signOut }) {
       const text = window.prompt('Note text:');
       if (text && text.trim()) {
         pushHistory();
+        track.drawingCreated('text');
         updateDrawings('texts', prev => [...prev, { id: uid('t'), x: pt.x, y: pt.y, text: text.trim().toUpperCase() }]);
       }
     } else if (tool === 'press') {
       pushHistory();
+      track.drawingCreated('press');
       updateDrawings('presses', prev => [...prev, { id: uid('p'), x: pt.x, y: pt.y }]);
     } else if (tool === 'select') {
       setSelectedPlayer(null);
@@ -1831,6 +1867,7 @@ function TacticsBuilder({ session, profile, signOut }) {
     if (playing || tool !== 'select') return;
     e.stopPropagation(); e.preventDefault();
     setSelectedIds(ids);
+    track.unitDragged(ids.length);
     startGroupDrag(ids, getPitchPoint(e));
     const svg = svgRef.current;
     if (svg?.setPointerCapture) { try { svg.setPointerCapture(e.pointerId); } catch {} }
@@ -1884,6 +1921,7 @@ function TacticsBuilder({ session, profile, signOut }) {
         const len = Math.hypot(last.x - first.x, last.y - first.y);
         if (len > 12) {
           pushHistory();
+          track.drawingCreated('arrow', { color: arrowColor, style: arrowStyle, points: drawingArrow.points.length });
           updateDrawings('arrows', prev => [...prev, { id: uid('a'), points: drawingArrow.points, color: arrowColor, style: arrowStyle }]);
         }
       }
@@ -1891,6 +1929,7 @@ function TacticsBuilder({ session, profile, signOut }) {
     } else if (d.type === 'zone' && drawingZone) {
       if (drawingZone.w > 18 && drawingZone.h > 18) {
         pushHistory();
+        track.drawingCreated('zone', { color: arrowColor });
         updateDrawings('zones', prev => [...prev, {
           id: uid('z'), x: drawingZone.x, y: drawingZone.y,
           w: drawingZone.w, h: drawingZone.h,
@@ -1901,6 +1940,7 @@ function TacticsBuilder({ session, profile, signOut }) {
     } else if (d.type === 'shape-draw' && drawingShape) {
       if (drawingShape.w > 14 && drawingShape.h > 14) {
         pushHistory();
+        track.drawingCreated('shape', { color: arrowColor, square: Math.abs(drawingShape.w - drawingShape.h) < 2 });
         updateDrawings('shapes', prev => [...prev, {
           id: uid('s'), x: drawingShape.x, y: drawingShape.y,
           w: drawingShape.w, h: drawingShape.h, color: arrowColor,
@@ -1932,6 +1972,7 @@ function TacticsBuilder({ session, profile, signOut }) {
   const tryErase = (kind, id) => {
     if (tool !== 'eraser') return false;
     pushHistory();
+    track.drawingErased(kind);
     const collKey = { arrow: 'arrows', zone: 'zones', text: 'texts', press: 'presses', shape: 'shapes' }[kind];
     if (collKey) updateDrawings(collKey, prev => prev.filter(x => x.id !== id));
     return true;
@@ -1957,12 +1998,14 @@ function TacticsBuilder({ session, profile, signOut }) {
   /* ── Formation / mirror / clear ──────────────────────────── */
   const loadPreset = (key) => {
     pushHistory(); triggerAnimation();
+    track.loadFormation(key);
     setPlayers(buildFormation(key));
     setActivePreset(key); setCurrentPhase(-1);
     setPhases([null, null, null, null]);  // baseline — user can grow beyond 4
   };
   const mirrorTactic = () => {
     pushHistory(); triggerAnimation();
+    track.boardAction('mirror');
     setPlayers(prev => prev.map(p => ({
       ...p,
       pos: {
@@ -2018,6 +2061,7 @@ function TacticsBuilder({ session, profile, signOut }) {
      centred. Only the team(s) currently being edited are touched. */
   const balanceSymmetry = () => {
     pushHistory(); triggerAnimation();
+    track.boardAction('balance_symmetry', { team: editingTeam });
     const mid = PITCH_H / 2;
     const teams = editingTeam === 'both' ? ['home', 'away'] : [editingTeam];
     const next = {};
@@ -2055,6 +2099,7 @@ function TacticsBuilder({ session, profile, signOut }) {
 
   const clearOverlays = () => {
     pushHistory();
+    track.boardAction('clear_overlays', { scope: currentPhase >= 0 ? 'phase' : 'board' });
     if (currentPhase >= 0) {
       // Clear the current phase's drawings only
       updateDrawings('arrows', []);
@@ -2096,6 +2141,7 @@ function TacticsBuilder({ session, profile, signOut }) {
   };
   const clearPhase = (idx) => {
     pushHistory();
+    track.phaseAction('clear', { index: idx + 1 });
     setPhases(prev => prev.map((ph, i) => i === idx ? null : ph));
     if (currentPhase === idx) setCurrentPhase(-1);
   };
@@ -2105,6 +2151,7 @@ function TacticsBuilder({ session, profile, signOut }) {
   // Add a new empty phase slot at the end (button shows "+" when last slot is filled).
   const addPhaseSlot = () => {
     pushHistory();
+    track.phaseAction('add_slot', { total: phases.length + 1 });
     setPhases(prev => [...prev, null]);
   };
   // Inline rename via prompt — simple but does the job.
@@ -2115,6 +2162,7 @@ function TacticsBuilder({ session, profile, signOut }) {
     const trimmed = next.trim().slice(0, 32);
     if (!trimmed) return;
     pushHistory();
+    track.phaseAction('rename', { index: idx + 1 });
     setPhases(prev => prev.map((ph, i) =>
       i === idx && ph ? { ...ph, title: trimmed } : ph));
   };
@@ -2175,6 +2223,7 @@ function TacticsBuilder({ session, profile, signOut }) {
   };
   const exitPhase = () => {
     triggerAnimation();
+    track.phaseAction('exit');
     setCurrentPhase(-1);
     setTrails([]);
   };
@@ -2213,6 +2262,8 @@ function TacticsBuilder({ session, profile, signOut }) {
     const svg = svgRef.current;
     if (!svg || exporting) return;
     setExporting(true);
+    const startedAt = performance.now();
+    const facesOnBoard = players.filter(p => p.face).length;
     let url;
     try {
       const clone = svg.cloneNode(true);
@@ -2247,8 +2298,14 @@ function TacticsBuilder({ session, profile, signOut }) {
       a.download = `${tacticName.replace(/[^a-z0-9]+/gi, '_') || 'tactic'}.png`;
       a.href = canvas.toDataURL('image/png');
       a.click();
+      track.exportTactic({
+        format: 'png', status: 'success', faces: facesOnBoard,
+        view: opts.vertical ? 'vertical' : 'horizontal',
+        ms: Math.round(performance.now() - startedAt),
+      });
     } catch (err) {
       console.error('[export]', err);
+      track.exportTactic({ format: 'png', status: 'error', reason: String(err?.name || err).slice(0, 60) });
       alert(`Export failed: ${err.message || err}`);
     } finally {
       if (url) URL.revokeObjectURL(url);
@@ -2285,16 +2342,22 @@ function TacticsBuilder({ session, profile, signOut }) {
   const handleFacePick = (faceData) => {
     if (!selectedPlayer) return;
     pushHistory();
+    track.faceAssigned({
+      player_id: faceData.id, player_name: faceData.name,
+      role: faceData.role, nation: faceData.nation,
+    });
     setPlayers(prev => prev.map(p => p.id === selectedPlayer ? { ...p, face: faceData } : p));
   };
   const handleFaceClear = () => {
     if (!selectedPlayer) return;
     pushHistory();
+    track.faceCleared('panel');
     setPlayers(prev => prev.map(p => p.id === selectedPlayer ? { ...p, face: null } : p));
   };
   const handlePositionPick = (pos) => {
     if (!selectedPlayer) return;
     pushHistory();
+    track.positionChanged(players.find(p => p.id === selectedPlayer)?.label, pos);
     setPlayers(prev => prev.map(p => {
       if (p.id !== selectedPlayer) return p;
       // The face assignment survives a role change — playing a winger at
@@ -2685,7 +2748,7 @@ function TacticsBuilder({ session, profile, signOut }) {
             ['both', 'BOTH', '#e2e8f0', '#0f172a'],
             ['away', 'A', kitPal.away.base, kitPal.away.ink],
           ].map(([key, label, bg, fg]) => (
-            <button key={key} onClick={() => setEditingTeam(key)}
+            <button key={key} onClick={() => { setEditingTeam(key); track.teamFilter(key); }}
               className="px-2 py-1.5 text-[11px] font-black rounded transition"
               style={{
                 fontFamily:'"Uni Sans Heavy", Oswald, sans-serif', letterSpacing:'1px',
@@ -2706,7 +2769,7 @@ function TacticsBuilder({ session, profile, signOut }) {
         {/* 2D / 3D toggle — large unique tab */}
         <div className="flex items-center bg-well/50 rounded p-0.5 border border-accent/40 shadow-glow">
           <button
-            onClick={() => setViewMode('2d')}
+            onClick={() => { setViewMode('2d'); track.viewMode('2d'); }}
             className={`px-3 py-1.5 text-[11px] font-black tracking-wider rounded transition ${
               viewMode === '2d' ? 'bg-accent text-acc-ink shadow-glow' : 'text-mute hover:text-ink'
             }`}
@@ -2714,7 +2777,7 @@ function TacticsBuilder({ session, profile, signOut }) {
             ▱ 2D
           </button>
           <button
-            onClick={() => setViewMode('3d')}
+            onClick={() => { setViewMode('3d'); track.viewMode('3d'); }}
             className={`px-3 py-1.5 text-[11px] font-black tracking-wider rounded transition ${
               viewMode === '3d' ? 'bg-accent text-acc-ink shadow-glow' : 'text-mute hover:text-ink'
             }`}
@@ -2734,7 +2797,7 @@ function TacticsBuilder({ session, profile, signOut }) {
           style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
           ⚖ BALANCE SYMMETRY
         </button>
-        <button onClick={() => setCompareMode(c => !c)}
+        <button onClick={() => { track.boardAction(compareMode ? 'compare_off' : 'compare_on'); setCompareMode(c => !c); }}
           className={`px-2.5 py-1.5 text-[11px] font-extrabold border rounded transition ${
             compareMode ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-ink/5 hover:bg-ink/10 border-ink/10'
           }`} style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
@@ -2772,7 +2835,7 @@ function TacticsBuilder({ session, profile, signOut }) {
                   @{profile.username}
                 </span>
               </div>
-              <button onClick={signOut}
+              <button onClick={() => { track.logout('builder_header'); identify(null); signOut(); }}
                 title="Log out"
                 className="px-2 py-1.5 text-[11px] font-extrabold bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 rounded"
                 style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
@@ -2795,7 +2858,7 @@ function TacticsBuilder({ session, profile, signOut }) {
             ['press', '!', 'Press trigger'],
             ['eraser', '⌫', 'Eraser'],
           ].map(([t, icon, title]) => (
-            <button key={t} onClick={() => setTool(t)} title={title}
+            <button key={t} onClick={() => { setTool(t); track.selectTool(t); }} title={title}
               className={`w-10 h-10 rounded flex items-center justify-center text-base font-extrabold transition border ${
                 tool === t
                   ? 'bg-accent/20 border-accent/55 text-accent shadow-glow'
@@ -3100,6 +3163,8 @@ function TacticsBuilder({ session, profile, signOut }) {
                       /* One undo step per editing session, not per keystroke. */
                       onFocus={pushHistory}
                       onChange={(e) => patchSelected({ name: e.target.value.slice(0, 24) })}
+                      /* One event per committed edit, not per keystroke. */
+                      onBlur={(e) => { if (e.target.value.trim()) track.playerNamed({ has_face: !!sel.face }); }}
                       placeholder={sel.face ? sel.face.name : 'Add a name…'}
                       maxLength={24}
                       className="w-full mb-3 bg-well/50 border border-ink/10 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-accent" />

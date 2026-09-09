@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase, fetchProfile } from '../supabase';
 import LoginRegister from './LoginRegister';
 import UsernameModal from './UsernameModal';
+import { identify } from '../analytics';
 
 /**
  * Wraps the tactics builder. Three states:
@@ -51,6 +52,7 @@ export default function AuthGate({ children }) {
   }, [refreshProfile]);
 
   const signOut = useCallback(async () => {
+    identify(null);
     await supabase.auth.signOut();
   }, []);
 

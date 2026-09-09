@@ -2,6 +2,7 @@
 // in the navbar against the same Supabase client used by the tactics builder.
 import '../../style.css';
 import { supabase, fetchProfile } from '../tactics/supabase';
+import { track, identify } from '../tactics/analytics';
 
 const slot = document.getElementById('lp-auth-slot');
 if (slot) {
@@ -31,7 +32,9 @@ async function render() {
       <span>Log out</span>
     </button>`;
   document.getElementById('lp-logout')?.addEventListener('click', async () => {
+    track.logout('landing_nav');
     await supabase.auth.signOut();
+    identify(null);
   });
 }
 
@@ -51,4 +54,33 @@ document.querySelectorAll('a[href^="#"]').forEach((a) => {
     e.preventDefault();
     t.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
+});
+
+/* ── Analytics ──────────────────────────────────────────────────
+   Which entry point actually converts is the landing page's whole
+   question, so every route into the app is attributed by location
+   rather than lumped into one click event. Delegated from the
+   document so the nav's re-rendered auth slot stays covered. */
+supabase.auth.getSession()
+  .then(({ data }) => identify(data?.session?.user?.id || null))
+  .catch(() => {});
+
+document.addEventListener('click', (e) => {
+  const link = e.target.closest?.('a[href]');
+  if (!link) return;
+  const href = link.getAttribute('href') || '';
+
+  if (href.includes('tactics.html')) {
+    const location =
+      link.closest('.lp-nav')    ? (link.classList.contains('lp-nav-cta-auth') ? 'nav_login' : 'nav')
+      : link.closest('.lp-ctas') ? 'hero'
+      : 'other';
+    track.ctaClick('open_board', location);
+    return;
+  }
+  if (href === '#features') { track.ctaClick('whats_inside', 'hero'); return; }
+  // Outbound: the footer credit and anything else off-site.
+  if (/^https?:/i.test(href) && !href.includes(window.location.host)) {
+    try { track.ctaClick('outbound', new URL(href).hostname); } catch {}
+  }
 });

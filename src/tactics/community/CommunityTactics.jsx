@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { listSharedTactics, publishTactic, supabase } from '../supabase';
-import { track } from '../analytics';
+import { track, trackEvent } from '../analytics';
 
 /**
  * Community Tactics tab — sits in the right side panel under the Concept Playbook.
@@ -26,6 +26,14 @@ export default function CommunityTactics({ session, profile, currentTactic, onLo
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Debounced so a query is reported once the user stops typing, not per key.
+  useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) return;
+    const t = setTimeout(() => trackEvent('community_search', { search_term: q }), 700);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return items;
@@ -46,9 +54,10 @@ export default function CommunityTactics({ session, profile, currentTactic, onLo
     setPublishing(false);
     if (err) {
       setError(err.message);
+      track.publishTactic({ name, status: 'error' });
       return;
     }
-    track.publishTactic({ name });
+    track.publishTactic({ name, status: 'success' });
     setPublishOpen(false);
     refresh();
   };
@@ -93,7 +102,7 @@ export default function CommunityTactics({ session, profile, currentTactic, onLo
           <button key={it.id}
             onClick={() => {
               onLoad(it);
-              track.loadTactic({ shared_id: it.id, name: it.name });
+              track.loadTactic({ where: 'community', shared_id: it.id, name: it.name });
             }}
             className="w-full text-left p-2 bg-ink/[0.03] hover:bg-accent/10
                        border border-ink/10 hover:border-accent/40 rounded transition group">
