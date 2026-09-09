@@ -1369,7 +1369,7 @@ function ModalShell({ title, subtitle, onClose, children, wide }) {
 /* =============================================================
    MAIN
    ============================================================= */
-function TacticsBuilder({ session, profile, signOut }) {
+function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
   const [players, setPlayers] = useState(() => buildFormation('4-3-3'));
   const [possessionMode, setPossessionMode] = useState('inPossession');
   // Opens on the home side alone — a single shape is the common starting
@@ -2825,6 +2825,16 @@ function TacticsBuilder({ session, profile, signOut }) {
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
             {exporting ? '⏳ EXPORTING…' : '⇩ EXPORT'}
           </button>
+
+          {guest && exitGuest && (
+            <button onClick={exitGuest}
+              title="Sign in to save tactics to the cloud and publish to the community"
+              className="ml-1 px-2.5 py-1.5 text-[11px] font-extrabold bg-accent/10
+                         hover:bg-accent/20 border border-accent/35 text-accent rounded transition"
+              style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
+              ⇥ SIGN IN
+            </button>
+          )}
 
           {profile && (
             <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-ink/10">

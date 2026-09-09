@@ -90,6 +90,8 @@ export const track = {
   register:          (method) => trackEvent('sign_up', { method }),
   logout:            (where)  => trackEvent('logout', { where }),
   usernameSet:       ()       => trackEvent('username_set'),
+  /** entered | exited — how much of the traffic skips the account entirely */
+  guestMode:         (action) => trackEvent('guest_mode', { action }),
 
   /* ── board setup ───────────────────────────────────────── */
   loadFormation:     (formation) => trackEvent('formation_loaded', { formation }),

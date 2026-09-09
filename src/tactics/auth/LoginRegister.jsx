@@ -6,7 +6,7 @@ import { track, trackEvent } from '../analytics';
  * Login + Register modal that floats above a dimmed app background.
  * Toggles between two tabs. Includes Google + Discord OAuth buttons.
  */
-export default function LoginRegister() {
+export default function LoginRegister({ onGuest }) {
   const [mode, setMode] = useState('login'); // 'login' | 'register'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -53,19 +53,19 @@ export default function LoginRegister() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4
                     bg-black/75 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#0d141f]
-                      shadow-[0_30px_80px_rgba(0,0,0,0.7),0_0_60px_rgba(96,165,250,0.10)]
+      <div className="w-full max-w-md rounded-xl border border-ink/10 bg-s2
+                      shadow-[0_30px_80px_rgba(0,0,0,0.7),0_0_60px_rgba(215,255,60,0.10)]
                       overflow-hidden">
-        <div className="px-6 pt-5 pb-4 border-b border-white/10
-                        bg-gradient-to-r from-blue-500/[0.08] to-transparent">
-          <div className="text-[10px] font-extrabold tracking-[0.4em] text-blue-400 mb-1
+        <div className="px-6 pt-5 pb-4 border-b border-ink/10
+                        bg-gradient-to-r from-accent/[0.08] to-transparent">
+          <div className="text-[10px] font-extrabold tracking-[0.4em] text-accent mb-1
                           font-display">
             NAHWEEEZY'S TACTICS BOARD
           </div>
-          <h1 className="text-2xl font-extrabold text-white tracking-wide font-display">
+          <h1 className="text-2xl font-extrabold text-ink tracking-wide font-display">
             {mode === 'login' ? 'WELCOME BACK' : 'CREATE ACCOUNT'}
           </h1>
-          <p className="text-[12px] text-slate-400 mt-1">
+          <p className="text-[12px] text-mute mt-1">
             {mode === 'login'
               ? 'Log in to access the coaching board, save tactics & publish to the community.'
               : 'Make an account to save tactics, share with the community, and pick PL players.'}
@@ -73,15 +73,15 @@ export default function LoginRegister() {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-white/10">
+        <div className="flex border-b border-ink/10">
           {['login', 'register'].map((m) => (
             <button key={m}
               onClick={() => { setMode(m); setError(null); setInfo(null); }}
               className={`flex-1 py-3 text-xs font-extrabold tracking-[0.25em] transition
                           font-display
                           ${mode === m
-                            ? 'bg-blue-500/[0.08] text-blue-300 border-b-2 border-blue-400'
-                            : 'text-slate-400 hover:text-white border-b-2 border-transparent'}`}>
+                            ? 'bg-accent/[0.08] text-accent border-b-2 border-accent'
+                            : 'text-mute hover:text-ink border-b-2 border-transparent'}`}>
               {m === 'login' ? 'LOG IN' : 'REGISTER'}
             </button>
           ))}
@@ -92,13 +92,13 @@ export default function LoginRegister() {
           <button onClick={() => oauth('google')}
             className="w-full flex items-center justify-center gap-3 py-2.5 rounded
                        bg-white text-slate-900 font-bold text-sm hover:bg-slate-100
-                       transition border border-white/10">
+                       transition border border-ink/10">
             <GoogleIcon />
             Continue with Google
           </button>
           <button onClick={() => oauth('discord')}
             className="w-full flex items-center justify-center gap-3 py-2.5 rounded
-                       bg-[#5865F2] text-white font-bold text-sm hover:bg-[#4752c4]
+                       bg-[#5865F2] text-ink font-bold text-sm hover:bg-[#4752c4]
                        transition border border-[#5865F2]/40">
             <DiscordIcon />
             Continue with Discord
@@ -106,30 +106,30 @@ export default function LoginRegister() {
 
           <div className="flex items-center gap-3 my-2">
             <div className="flex-1 h-px bg-white/10" />
-            <div className="text-[9px] tracking-[0.3em] text-slate-500 font-display">OR EMAIL</div>
+            <div className="text-[9px] tracking-[0.3em] text-dim font-display">OR EMAIL</div>
             <div className="flex-1 h-px bg-white/10" />
           </div>
 
           <form onSubmit={submit} className="space-y-3">
             <div>
-              <label className="text-[9px] font-extrabold tracking-[0.25em] text-slate-400
+              <label className="text-[9px] font-extrabold tracking-[0.25em] text-mute
                                 font-display block mb-1">EMAIL</label>
               <input type="email" required value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="w-full bg-black/40 border border-white/10 rounded
-                           px-3 py-2 text-sm text-white placeholder-slate-500 caret-blue-400
-                           focus:outline-none focus:border-blue-400" />
+                className="w-full bg-well/50 border border-ink/10 rounded
+                           px-3 py-2 text-sm text-ink placeholder-dim caret-accent
+                           focus:outline-none focus:border-accent" />
             </div>
             <div>
-              <label className="text-[9px] font-extrabold tracking-[0.25em] text-slate-400
+              <label className="text-[9px] font-extrabold tracking-[0.25em] text-mute
                                 font-display block mb-1">PASSWORD</label>
               <input type="password" required minLength={6} value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-black/40 border border-white/10 rounded
-                           px-3 py-2 text-sm text-white placeholder-slate-500 caret-blue-400
-                           focus:outline-none focus:border-blue-400" />
+                className="w-full bg-well/50 border border-ink/10 rounded
+                           px-3 py-2 text-sm text-ink placeholder-dim caret-accent
+                           focus:outline-none focus:border-accent" />
             </div>
 
             {error && (
@@ -139,25 +139,45 @@ export default function LoginRegister() {
               </div>
             )}
             {info && (
-              <div className="p-2.5 bg-blue-500/15 border border-blue-400/30
-                              rounded text-[12px] text-blue-200">
+              <div className="p-2.5 bg-accent/15 border border-accent/30
+                              rounded text-[12px] text-accent">
                 ✉ {info}
               </div>
             )}
 
             <button type="submit" disabled={loading}
-              className="w-full py-2.5 rounded bg-blue-500 hover:bg-blue-400
-                         text-white font-extrabold text-sm font-display
-                         tracking-widest transition shadow-[0_0_14px_rgba(96,165,250,0.4)]
+              className="w-full py-2.5 rounded bg-accent hover:brightness-110
+                         text-acc-ink font-extrabold text-sm font-display
+                         tracking-widest transition shadow-[0_0_14px_rgba(215,255,60,0.4)]
                          disabled:opacity-50">
               {loading ? '…' : mode === 'login' ? 'LOG IN' : 'CREATE ACCOUNT'}
             </button>
           </form>
 
+          {onGuest && (
+            <>
+              <div className="flex items-center gap-3 pt-1">
+                <div className="flex-1 h-px bg-ink/10" />
+                <div className="text-[9px] tracking-[0.3em] text-dim font-display">OR</div>
+                <div className="flex-1 h-px bg-ink/10" />
+              </div>
+              <button type="button" onClick={onGuest}
+                className="w-full py-2.5 rounded border border-accent/40 bg-accent/10
+                           hover:bg-accent/20 text-accent font-extrabold text-sm
+                           font-display tracking-widest transition">
+                SKIP — USE THE BOARD
+              </button>
+              <p className="text-[10px] text-dim leading-snug text-center">
+                The full board, drawing tools and PNG export work without an account.
+                Saving to the cloud and publishing to the community need one.
+              </p>
+            </>
+          )}
+
           <div className="text-center">
-            <a href="/index.html"
-              className="text-[10px] font-extrabold tracking-[0.25em] text-slate-500
-                         hover:text-blue-300 font-display">
+            <a href="index.html"
+              className="text-[10px] font-extrabold tracking-[0.25em] text-dim
+                         hover:text-accent font-display">
               ← BACK TO LANDING
             </a>
           </div>
