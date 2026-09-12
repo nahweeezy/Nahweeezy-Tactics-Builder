@@ -136,6 +136,37 @@ const SHAPE_BANDS = [
 ];
 /* Structure lines follow each team's kit — see `kitPalette().line`. */
 
+/* ── Pitch geography ───────────────────────────────────────────
+   The board is 1050x680 units for a 105x68 m pitch, so one metre is
+   ten units — which lets passing distances be reasoned about in real
+   footballing terms rather than arbitrary pixels. */
+const UNITS_PER_M = 10;
+const CHANNEL_EDGES = [136, 272, 408, 544];      // the 5-channel split
+const channelOf = (y) => CHANNEL_EDGES.reduce((c, e) => (y > e ? c + 1 : c), 0);
+const thirdOf = (x) => (x < PITCH_W / 3 ? 0 : x < (2 * PITCH_W) / 3 ? 1 : 2);
+
+/**
+ * The role a player's location actually describes.
+ *
+ * `adv` is how far up the pitch they are from their own goal (0..1), which
+ * flips per team since home attacks right and away attacks left. Channel
+ * decides wide vs central. Keepers are left alone in both directions: an
+ * existing GK stays a GK wherever they roam, and nobody else is ever
+ * inferred into the shirt, so a side always has exactly one.
+ */
+function inferRole(x, y, team, currentLabel) {
+  if (currentLabel === 'GK') return 'GK';
+  const adv = team === 'home' ? x / PITCH_W : 1 - x / PITCH_W;
+  const ch = channelOf(y);
+  const wide = ch === 0 || ch === 4;
+  const left = ch <= 1;
+  if (adv < 0.32) return wide ? (left ? 'LB' : 'RB') : 'CB';
+  if (adv < 0.46) return wide ? (left ? 'LB' : 'RB') : 'CDM';
+  if (adv < 0.62) return wide ? (left ? 'LM' : 'RM') : 'CM';
+  if (adv < 0.78) return wide ? (left ? 'LM' : 'RM') : 'CAM';
+  return wide ? (left ? 'LW' : 'RW') : 'ST';
+}
+
 // Balance Symmetry: mirrored role pairs, then central roles paired outside-in.
 const MIRROR_PAIRS = [['LB', 'RB'], ['LWB', 'RWB'], ['LM', 'RM'], ['LW', 'RW']];
 const CENTRAL_ROLES = ['GK', 'CB', 'CDM', 'CM', 'CAM', 'ST', 'CF'];
@@ -556,7 +587,13 @@ function PlayerToken({
    the coordinate map with rAF (linear, matching the tokens' easing)
    so the lines glide in lockstep with the players.
    ============================================================= */
-function ShapeLines({ players, positions, editingTeam, animating, tool, kitPal, onBandPointerDown }) {
+/**
+ * Token movement animates via CSS transforms, but anything drawn *between*
+ * players is a path built from coordinates — it would jump between phases
+ * while the tokens glide. This tweens the coordinate map on rAF with the same
+ * linear timing, so lines and polygons travel in lockstep with the players.
+ */
+function useTweenedPositions(positions, animating) {
   const [tweened, setTweened] = useState(positions);
   const curRef = useRef(positions);   // what's currently on screen
   const rafRef = useRef(null);
@@ -588,6 +625,108 @@ function ShapeLines({ players, positions, editingTeam, animating, tool, kitPal, 
     rafRef.current = requestAnimationFrame(step);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [positions, animating]);
+
+  return tweened;
+}
+
+/* =============================================================
+   PASSING NETWORK
+   Derived entirely from where players actually stand, so it
+   re-forms as the shape moves rather than tracing fixed roles.
+   Edges are the passes that are genuinely on; triangles are the
+   three-way combinations coaches actually look for, weighted so
+   the tight local ones carry the emphasis.
+   ============================================================= */
+// A comfortable short pass tops out around 25 m; past that it stops being a
+// combination and starts being a switch, so it is not part of the network.
+const PASS_MAX = 25 * UNITS_PER_M;
+// An equilateral triangle on ~15 m sides is the classic rondo shape.
+const TRI_TIGHT = 45 * UNITS_PER_M;   // fully emphasised at or under this
+const TRI_LOOSE = 72 * UNITS_PER_M;   // faded out entirely beyond this
+const MAX_TRIANGLES = 10;             // per team — enough to read, not a mesh
+
+function PassingNetwork({ players, positions, editingTeam, animating, kitPal }) {
+  const tweened = useTweenedPositions(positions, animating);
+  const teams = editingTeam === 'both' ? ['home', 'away'] : [editingTeam];
+
+  return (
+    <g pointerEvents="none">
+      {teams.map(team => {
+        const nodes = players
+          .filter(p => p.team === team && tweened[p.id]?.x != null)
+          .map(p => ({ id: p.id, ...tweened[p.id] }));
+        if (nodes.length < 2) return null;
+
+        const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+        // Edges: every pass that is actually on.
+        const edges = [];
+        const linked = new Map(nodes.map(n => [n.id, new Set()]));
+        for (let i = 0; i < nodes.length; i++) {
+          for (let j = i + 1; j < nodes.length; j++) {
+            const d = dist(nodes[i], nodes[j]);
+            if (d > PASS_MAX) continue;
+            edges.push({ a: nodes[i], b: nodes[j], d });
+            linked.get(nodes[i].id).add(nodes[j].id);
+            linked.get(nodes[j].id).add(nodes[i].id);
+          }
+        }
+
+        // Triangles: closed three-player combinations, scored on how tight
+        // they are and bonused when they sit inside one area of the pitch —
+        // a compact local triangle is worth more than a stretched one.
+        const tris = [];
+        for (let i = 0; i < nodes.length; i++) {
+          for (let j = i + 1; j < nodes.length; j++) {
+            if (!linked.get(nodes[i].id).has(nodes[j].id)) continue;
+            for (let k = j + 1; k < nodes.length; k++) {
+              if (!linked.get(nodes[i].id).has(nodes[k].id)) continue;
+              if (!linked.get(nodes[j].id).has(nodes[k].id)) continue;
+              const [A, B, C] = [nodes[i], nodes[j], nodes[k]];
+              const per = dist(A, B) + dist(B, C) + dist(C, A);
+              let score = 1 - (per - TRI_TIGHT) / (TRI_LOOSE - TRI_TIGHT);
+              score = Math.max(0, Math.min(1, score));
+              if (score <= 0) continue;
+              const thirds = new Set([A, B, C].map(n => thirdOf(n.x)));
+              const chans = [A, B, C].map(n => channelOf(n.y));
+              if (thirds.size === 1) score *= 1.25;                                  // same third
+              if (Math.max(...chans) - Math.min(...chans) <= 1) score *= 1.2;         // adjacent channels
+              tris.push({ pts: [A, B, C], score: Math.min(1, score) });
+            }
+          }
+        }
+        tris.sort((p, q) => q.score - p.score);
+        const top = tris.slice(0, MAX_TRIANGLES);
+
+        const c = kitPal[team].line;
+        return (
+          <g key={team}>
+            {/* combination triangles, tightest carrying the most weight */}
+            {top.map((t, i) => (
+              <polygon key={`t${i}`}
+                points={t.pts.map(p => `${p.x},${p.y}`).join(' ')}
+                fill={c} fillOpacity={0.035 + 0.10 * t.score}
+                stroke={c} strokeOpacity={0.10 + 0.16 * t.score} strokeWidth={0.8}
+                strokeLinejoin="round" />
+            ))}
+            {/* the passes themselves — closer is brighter and heavier */}
+            {edges.map((e, i) => {
+              const near = 1 - e.d / PASS_MAX;
+              return (
+                <line key={`e${i}`} x1={e.a.x} y1={e.a.y} x2={e.b.x} y2={e.b.y}
+                  stroke={c} strokeOpacity={0.10 + 0.34 * near}
+                  strokeWidth={0.7 + 1.7 * near} strokeLinecap="round" />
+              );
+            })}
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function ShapeLines({ players, positions, editingTeam, animating, tool, kitPal, onBandPointerDown }) {
+  const tweened = useTweenedPositions(positions, animating);
 
   const teams = editingTeam === 'both' ? ['home', 'away'] : [editingTeam];
   const at = (p) => tweened[p.id];
@@ -1234,6 +1373,8 @@ function DisplayOptionsModal({ open, onClose, opts, setOpts, theme, setTheme, ki
       </div>
       <div className="space-y-2 max-h-[46vh] overflow-y-auto pr-1">
         {[
+          ['passingLanes',     'Passing Network',            'Draws the passes that are actually on and shades the tight three-way combinations, weighted toward compact triangles inside one area of the pitch. Re-forms as the shape moves.'],
+          ['autoRole',         'Positions Follow Play',      'A player’s position re-reads itself from where you put them — push a centre-back into midfield and they become one. Keepers stay keepers.'],
           ['showShapeLines',   'Positional Structure Lines', 'Connect each unit — defence, midfield, attack — plus CAM→ST and faint fullback / centre-back progression linkers. Drag a line to move the whole unit (2D).'],
           ['darkPitch',        'Dark Pitch Surface',         'Swap the green turf for night slate. Selecting the Dark theme turns this on automatically.'],
           ['playerMode',       'Real Player Faces',          'Click any token to assign one of ~7,300 real players. Their cutout and name appear on the token.'],
@@ -1468,6 +1609,8 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
     playerMode: false,
     showBall: true,
     showShapeLines: true,   // positional-structure unit lines (2D)
+    passingLanes: true,     // proximity-driven passing network + triangles
+    autoRole: true,         // a player's position follows where they stand
     darkPitch: false,       // night-slate turf instead of green
     vertical: false,        // up-and-down stadium orientation
     customStadium: false,   // 3D-only: use the user-supplied .dae model
@@ -2081,6 +2224,23 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
       }
       setDrawingShape(null);
     }
+    // A player's role is a description of where they are, so once they've been
+    // moved it is re-read from the pitch. Applied on release rather than
+    // per-frame so the label doesn't flicker through roles mid-drag.
+    if (opts.autoRole && d.type === 'group' && d.ids?.length) {
+      setPlayers(prev => prev.map(p => {
+        if (!d.ids.includes(p.id)) return p;
+        const pos = currentPhase >= 0
+          ? (phases[currentPhase]?.[p.id] || p.pos[possessionMode])
+          : p.pos[possessionMode];
+        if (!pos) return p;
+        const role = inferRole(pos.x, pos.y, p.team, p.label);
+        if (role === p.label) return p;
+        track.positionChanged(p.label, role);
+        return { ...p, label: role };
+      }));
+    }
+
     dragRef.current = null;
     setDraggingIds([]);
     disarmDragRef.current?.();
@@ -2727,6 +2887,13 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
         {opts.showAds && adSlots.map((slot, i) => (
           <AdBoard key={`ad-${i}`} slot={slot} />
         ))}
+
+        {/* PASSING NETWORK — sits under the structure lines so the two read
+            as layers rather than competing */}
+        {opts.passingLanes && (
+          <PassingNetwork players={players} positions={positions}
+            editingTeam={editingTeam} animating={animating} kitPal={kitPal} />
+        )}
 
         {/* POSITIONAL STRUCTURE — unit lines under drawings & tokens */}
         {opts.showShapeLines && (
