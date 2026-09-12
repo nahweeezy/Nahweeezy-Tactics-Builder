@@ -297,10 +297,11 @@ function getSVGPoint(svg, evt) {
 /* =============================================================
    PITCH LINES
    ============================================================= */
-function PitchLines({ showChannels, showDefLine, defLines, playing, animating, skin = PITCH_SKINS.grass, kitPal }) {
+function PitchLines({ showChannels, showDefLine, defLines, playing, animating, skin = PITCH_SKINS.grass, kitPal, rot = 0 }) {
   // Smoothly translate the def-line group via CSS transform when animating
   // so it doesn't teleport between phases like x1/x2 attribute changes do.
   const lineTrans = animating ? `transform ${PHASE_DURATION}ms linear` : 'none';
+  const upright = rot ? `rotate(${-rot})` : undefined;
   return (
     <g pointerEvents="none">
       {Array.from({ length: 12 }).map((_, i) => (
@@ -342,6 +343,7 @@ function PitchLines({ showChannels, showDefLine, defLines, playing, animating, s
         <g pointerEvents="none">
           {['WING','HALFSPACE','CENTRAL','HALFSPACE','WING'].map((tx, i) => (
             <text key={i} x={28} y={68 + i * 136}
+              transform={rot ? `rotate(${-rot} 28 ${68 + i * 136})` : undefined}
               fill="rgba(255,255,255,0.5)" fontSize={11} fontWeight={800} letterSpacing="2"
               style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
               {tx}
@@ -354,26 +356,30 @@ function PitchLines({ showChannels, showDefLine, defLines, playing, animating, s
         <g style={{ transform: `translate(${defLines.home}px, 0px)`, transition: lineTrans }}>
           <line x1={0} y1={20} x2={0} y2={PITCH_H - 20}
             stroke={kitPal.home.base} strokeWidth={2} strokeDasharray="8 6" opacity={0.85} />
-          <rect x={-36} y={26} width={72} height={18} rx={3}
-            fill={kitPal.home.base} opacity={0.92} />
-          <text x={0} y={39} textAnchor="middle" fontSize={10} fontWeight={800}
-            fill={kitPal.home.ink} letterSpacing="1.5"
-            style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
-            HOME LINE
-          </text>
+          <g transform={rot ? `rotate(${-rot} 0 35)` : undefined}>
+            <rect x={-36} y={26} width={72} height={18} rx={3}
+              fill={kitPal.home.base} opacity={0.92} />
+            <text x={0} y={39} textAnchor="middle" fontSize={10} fontWeight={800}
+              fill={kitPal.home.ink} letterSpacing="1.5"
+              style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
+              HOME LINE
+            </text>
+          </g>
         </g>
       )}
       {showDefLine && defLines.away != null && (
         <g style={{ transform: `translate(${defLines.away}px, 0px)`, transition: lineTrans }}>
           <line x1={0} y1={20} x2={0} y2={PITCH_H - 20}
             stroke={kitPal.away.base} strokeWidth={2} strokeDasharray="8 6" opacity={0.85} />
-          <rect x={-36} y={26} width={72} height={18} rx={3}
-            fill={kitPal.away.base} opacity={0.92} />
-          <text x={0} y={39} textAnchor="middle" fontSize={10} fontWeight={800}
-            fill={kitPal.away.ink} letterSpacing="1.5"
-            style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
-            AWAY LINE
-          </text>
+          <g transform={rot ? `rotate(${-rot} 0 35)` : undefined}>
+            <rect x={-36} y={26} width={72} height={18} rx={3}
+              fill={kitPal.away.base} opacity={0.92} />
+            <text x={0} y={39} textAnchor="middle" fontSize={10} fontWeight={800}
+              fill={kitPal.away.ink} letterSpacing="1.5"
+              style={{fontFamily:'"Uni Sans Heavy", Oswald, sans-serif'}}>
+              AWAY LINE
+            </text>
+          </g>
         </g>
       )}
 
@@ -399,7 +405,7 @@ function PitchLines({ showChannels, showDefLine, defLines, playing, animating, s
    ============================================================= */
 function PlayerToken({
   player, x, y, selected, dragging, animating, showStats, showMovementArrows, playerMode,
-  pal, onPointerDown, onContextMenu, onDoubleClick,
+  pal, nameSize = 13, rot = 0, onPointerDown, onContextMenu, onDoubleClick,
 }) {
   const isHome = player.team === 'home';
   const kit = isHome ? 'url(#kitHome)' : 'url(#kitAway)';
@@ -412,8 +418,16 @@ function PlayerToken({
   // A typed-in name wins over the assigned face's name; the plate shows
   // whichever is set, so custom names work with Player Mode off.
   const nameText = player.name?.trim() || (playerMode && face ? face.name : '');
-  // tight name label width: char count × 6.2px + padding, min 36
-  const nameWidth = Math.max(36, nameText.length * 6.4 + 12);
+  // The plate is sized from the type, not the other way round: these are
+  // viewBox units, and the board is scaled down hard on a phone — at the old
+  // fixed 9 the name rendered around 4 CSS pixels.
+  const nameWidth = Math.max(nameSize * 3.4, nameText.length * nameSize * 0.62 + nameSize);
+  const plateH = nameSize + 6;
+  // A vertical board rotates its whole content group, which would lay every
+  // label on its side. Counter-rotating about the token keeps text upright
+  // AND keeps the plate below the token in screen terms, because the two
+  // rotations cancel.
+  const upright = rot ? `rotate(${-rot})` : undefined;
 
   return (
     <g
@@ -489,20 +503,23 @@ function PlayerToken({
         <Fragment>
           <circle r={PLAYER_R} fill={kit}
             style={{ filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.4))' }} />
-          <text x={0} y={4} textAnchor="middle" fontSize={11} fontWeight={800}
-            fill={labelFill} pointerEvents="none"
-            style={{ userSelect: 'none', fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '0.5px' }}>
-            {player.label}
-          </text>
+          <g transform={upright}>
+            <text x={0} y={4} textAnchor="middle" fontSize={11} fontWeight={800}
+              fill={labelFill} pointerEvents="none"
+              style={{ userSelect: 'none', fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '0.5px' }}>
+              {player.label}
+            </text>
+          </g>
         </Fragment>
       )}
 
       {nameText && (
-        <g pointerEvents="none">
-          <rect x={-nameWidth/2} y={PLAYER_R + 4} width={nameWidth} height={14} rx={2}
+        <g pointerEvents="none" transform={upright}>
+          <rect x={-nameWidth/2} y={PLAYER_R + 4} width={nameWidth} height={plateH} rx={3}
             fill="rgba(0,0,0,0.85)"
-            stroke="rgba(215,255,60,0.5)" strokeWidth={0.8} />
-          <text x={0} y={PLAYER_R + 14} textAnchor="middle" fontSize={9} fontWeight={800}
+            stroke="rgba(215,255,60,0.5)" strokeWidth={1} />
+          <text x={0} y={PLAYER_R + 4 + plateH / 2 + nameSize * 0.36} textAnchor="middle"
+            fontSize={nameSize} fontWeight={800}
             fill="#fff" style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '0.4px' }}>
             {nameText}
           </text>
@@ -510,7 +527,7 @@ function PlayerToken({
       )}
 
       {showStats && !nameText && (
-        <g pointerEvents="none">
+        <g pointerEvents="none" transform={upright}>
           <rect x={-22} y={PLAYER_R + 4} width={44} height={13} rx={2}
             fill="rgba(0,0,0,0.78)" stroke="rgba(255,255,255,0.18)" strokeWidth={1} />
           <text x={0} y={PLAYER_R + 13} textAnchor="middle" fontSize={8.5} fontWeight={700}
@@ -2670,7 +2687,7 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
         <rect x={-8} y={-8} width={PITCH_W + 16} height={PITCH_H + 16}
           fill="none" stroke={skin.frame} strokeWidth={2} rx={4} />
 
-        <PitchLines showChannels={opts.showChannels} showDefLine={opts.showDefLine} defLines={defLines} playing={playing} animating={animating} skin={skin} kitPal={kitPal} />
+        <PitchLines showChannels={opts.showChannels} showDefLine={opts.showDefLine} defLines={defLines} playing={playing} animating={animating} skin={skin} kitPal={kitPal} rot={isVerticalPitch ? 90 : 0} />
 
         {/* Subtle grass-nap pattern over the pitch */}
         <rect x={0} y={0} width={PITCH_W} height={PITCH_H}
@@ -2743,11 +2760,13 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
               <animate attributeName="r" values="16;22;16" dur="1.4s" repeatCount="indefinite" />
             </circle>
             <text x={0} y={5} textAnchor="middle" fontSize={16} fontWeight={900} fill="#fff"
+              transform={isVerticalPitch ? 'rotate(-90)' : undefined}
               style={{ fontFamily: 'Inter,sans-serif' }}>!</text>
           </g>
         ))}
         {live.texts.map(t => (
-          <g key={t.id} transform={`translate(${t.x},${t.y})`}
+          <g key={t.id}
+            transform={`translate(${t.x},${t.y})${isVerticalPitch ? ' rotate(-90)' : ''}`}
             onClick={() => tryErase('text', t.id)}>
             <rect x={-4} y={-13} width={t.text.length * 7 + 14} height={20} rx={2}
               fill="rgba(0,0,0,0.82)" stroke="rgba(215,255,60,0.42)" strokeWidth={1} />
@@ -2789,6 +2808,8 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
                 showMovementArrows={opts.showMovementArrows}
                 playerMode={opts.playerMode}
                 pal={kitPal[p.team]}
+                nameSize={fill ? 19 : 13}
+                rot={isVerticalPitch ? 90 : 0}
                 onPointerDown={beginDragPlayer}
                 onContextMenu={handleContextMenu}
                 onDoubleClick={handleDoubleClick}
