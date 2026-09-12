@@ -146,25 +146,61 @@ const channelOf = (y) => CHANNEL_EDGES.reduce((c, e) => (y > e ? c + 1 : c), 0);
 const thirdOf = (x) => (x < PITCH_W / 3 ? 0 : x < (2 * PITCH_W) / 3 ? 1 : 2);
 
 /**
- * The role a player's location actually describes.
+ * The role a player's position describes — read relative to their own team,
+ * not to the pitch.
  *
- * `adv` is how far up the pitch they are from their own goal (0..1), which
- * flips per team since home attacks right and away attacks left. Channel
- * decides wide vs central. Keepers are left alone in both directions: an
- * existing GK stays a GK wherever they roam, and nobody else is ever
- * inferred into the shirt, so a side always has exactly one.
+ * Absolute depth gets this wrong the moment a side pushes up: camp everyone
+ * in the opposition box and an absolute reading turns the back line into
+ * strikers. What matters is where a player sits *within their own block*, so
+ * advancement is normalised against the deepest and highest outfielder. The
+ * deepest line stays the defence wherever the block is standing.
+ *
+ * Width stays absolute — the pitch is only 68 m across and a fullback hugging
+ * the touchline is in the same channel whether the team is camped or deep.
+ * Wide roles also hold on far longer than central ones: an overlapping
+ * fullback is still a fullback until they are genuinely level with the box.
+ *
+ * Keepers are fixed in both directions, so a side always keeps exactly one.
  */
-function inferRole(x, y, team, currentLabel) {
+function inferRole(x, y, team, currentLabel, block) {
   if (currentLabel === 'GK') return 'GK';
   const adv = team === 'home' ? x / PITCH_W : 1 - x / PITCH_W;
+
+  // Normalise against the team's own block when it has real depth. A very
+  // compressed side carries no meaningful ordering, so leave it alone rather
+  // than amplify a metre of noise into a role change.
+  let rel = adv;
+  if (block && block.spread >= 0.10) {
+    rel = (adv - block.min) / block.spread;
+    rel = Math.max(0, Math.min(1, rel));
+  }
+
   const ch = channelOf(y);
   const wide = ch === 0 || ch === 4;
   const left = ch <= 1;
-  if (adv < 0.32) return wide ? (left ? 'LB' : 'RB') : 'CB';
-  if (adv < 0.46) return wide ? (left ? 'LB' : 'RB') : 'CDM';
-  if (adv < 0.62) return wide ? (left ? 'LM' : 'RM') : 'CM';
-  if (adv < 0.78) return wide ? (left ? 'LM' : 'RM') : 'CAM';
-  return wide ? (left ? 'LW' : 'RW') : 'ST';
+
+  if (wide) {
+    if (rel < 0.55) return left ? 'LB' : 'RB';
+    if (rel < 0.82) return left ? 'LM' : 'RM';
+    return left ? 'LW' : 'RW';
+  }
+  if (rel < 0.28) return 'CB';
+  if (rel < 0.50) return 'CDM';
+  if (rel < 0.72) return 'CM';
+  if (rel < 0.88) return 'CAM';
+  return 'ST';
+}
+
+/** Deepest/highest outfield advancement for a side, for relative inference. */
+function teamBlock(players, posOf, team) {
+  const advs = players
+    .filter(p => p.team === team && p.label !== 'GK')
+    .map(p => { const q = posOf(p); if (!q) return null;
+      return team === 'home' ? q.x / PITCH_W : 1 - q.x / PITCH_W; })
+    .filter(v => v != null);
+  if (advs.length < 2) return null;
+  const min = Math.min(...advs), max = Math.max(...advs);
+  return { min, max, spread: max - min };
 }
 
 // Balance Symmetry: mirrored role pairs, then central roles paired outside-in.
@@ -698,24 +734,32 @@ function PassingNetwork({ players, positions, editingTeam, animating, kitPal }) 
         tris.sort((p, q) => q.score - p.score);
         const top = tris.slice(0, MAX_TRIANGLES);
 
+        // Triangles are shown by lifting the three passes that form them, not
+        // by filling the shape — shading three overlapping polygons turns the
+        // middle of the pitch to mud. An edge takes the weight of the best
+        // triangle it belongs to.
+        const key = (a, b) => (a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`);
+        const lift = new Map();
+        for (const t of top) {
+          const [A, B, C] = t.pts;
+          for (const [u, v] of [[A, B], [B, C], [C, A]]) {
+            const k = key(u, v);
+            lift.set(k, Math.max(lift.get(k) || 0, t.score));
+          }
+        }
+
         const c = kitPal[team].line;
         return (
           <g key={team}>
-            {/* combination triangles, tightest carrying the most weight */}
-            {top.map((t, i) => (
-              <polygon key={`t${i}`}
-                points={t.pts.map(p => `${p.x},${p.y}`).join(' ')}
-                fill={c} fillOpacity={0.035 + 0.10 * t.score}
-                stroke={c} strokeOpacity={0.10 + 0.16 * t.score} strokeWidth={0.8}
-                strokeLinejoin="round" />
-            ))}
-            {/* the passes themselves — closer is brighter and heavier */}
             {edges.map((e, i) => {
               const near = 1 - e.d / PASS_MAX;
+              const emph = lift.get(key(e.a, e.b)) || 0;
               return (
                 <line key={`e${i}`} x1={e.a.x} y1={e.a.y} x2={e.b.x} y2={e.b.y}
-                  stroke={c} strokeOpacity={0.10 + 0.34 * near}
-                  strokeWidth={0.7 + 1.7 * near} strokeLinecap="round" />
+                  stroke={c}
+                  strokeOpacity={0.06 + 0.10 * near + 0.34 * emph}
+                  strokeWidth={0.5 + 0.7 * near + 1.7 * emph}
+                  strokeLinecap="round" />
               );
             })}
           </g>
@@ -2228,17 +2272,26 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
     // moved it is re-read from the pitch. Applied on release rather than
     // per-frame so the label doesn't flicker through roles mid-drag.
     if (opts.autoRole && d.type === 'group' && d.ids?.length) {
-      setPlayers(prev => prev.map(p => {
-        if (!d.ids.includes(p.id)) return p;
-        const pos = currentPhase >= 0
+      setPlayers(prev => {
+        const posOf = (p) => (currentPhase >= 0
           ? (phases[currentPhase]?.[p.id] || p.pos[possessionMode])
-          : p.pos[possessionMode];
-        if (!pos) return p;
-        const role = inferRole(pos.x, pos.y, p.team, p.label);
-        if (role === p.label) return p;
-        track.positionChanged(p.label, role);
-        return { ...p, label: role };
-      }));
+          : p.pos[possessionMode]);
+        // One block per side, measured after the move, so each role is read
+        // against the shape the team is actually holding.
+        const blocks = {
+          home: teamBlock(prev, posOf, 'home'),
+          away: teamBlock(prev, posOf, 'away'),
+        };
+        return prev.map(p => {
+          if (!d.ids.includes(p.id)) return p;
+          const pos = posOf(p);
+          if (!pos) return p;
+          const role = inferRole(pos.x, pos.y, p.team, p.label, blocks[p.team]);
+          if (role === p.label) return p;
+          track.positionChanged(p.label, role);
+          return { ...p, label: role };
+        });
+      });
     }
 
     dragRef.current = null;
