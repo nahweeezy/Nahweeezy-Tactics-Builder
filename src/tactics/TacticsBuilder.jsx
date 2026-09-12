@@ -6,6 +6,8 @@ import { supabase } from './supabase';
 import ErrorBoundary from './ErrorBoundary';
 import { loadFaces, searchFaces, nationsFor, faceUrl, ageFrom } from './faces';
 import { asset } from './assets';
+import { useTouchUI } from './useTouchUI';
+import Sheet from './mobile/Sheet';
 // Lazy-loaded so the ~1 MB Three.js bundle is only fetched when the user
 // switches to 3D mode.
 const Pitch3D = lazy(() => import('./Pitch3D'));
@@ -1457,6 +1459,42 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
   const [showDisplayOpts, setShowDisplayOpts] = useState(false);
   const [showTacticMgmt, setShowTacticMgmt] = useState(false);
 
+  // ── Touch shell ────────────────────────────────────────────────
+  // Phones and tablets get a different chrome entirely: the board fills the
+  // screen, controls collapse into a nav and a thumb-reachable tab bar, and
+  // panels arrive as sheets. Same state, same pitch — only the frame differs.
+  const { touchUI, pref: uiPref, setMode: setUiMode } = useTouchUI();
+
+  // A landscape board inside a portrait phone can only ever fill a sliver of
+  // the screen. In the touch shell the pitch follows the device instead:
+  // portrait rotates it upright, landscape lays it flat. `orientLock` lets the
+  // user override that per session.
+  const [portrait, setPortrait] = useState(
+    () => typeof window !== 'undefined' && window.innerHeight >= window.innerWidth);
+  // Wide enough to keep the whole nav on one row — worth ~40px of board on a
+  // landscape iPad, where vertical space is the scarce resource.
+  const [wideNav, setWideNav] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth >= 720);
+  useEffect(() => {
+    const onResize = () => {
+      setPortrait(window.innerHeight >= window.innerWidth);
+      setWideNav(window.innerWidth >= 720);
+    };
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, []);
+  const [orientLock, setOrientLock] = useState(null);   // null | 'h' | 'v'
+  const isVerticalPitch = touchUI
+    ? (orientLock ? orientLock === 'v' : portrait)
+    : opts.vertical;
+  // null | 'more' | 'board' | 'phases' | 'player' | 'ink'
+  const [sheet, setSheet] = useState(null);
+  const closeSheet = useCallback(() => setSheet(null), []);
+
   // ── Kit colours ────────────────────────────────────────────────
   const [kits, setKits] = useState(() => {
     try {
@@ -1715,7 +1753,7 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
   // handlers see coordinates in the original (horizontal) coord space.
   const getPitchPoint = (e) => {
     const pt = getSVGPoint(svgRef.current, e);
-    if (!opts.vertical) return pt;
+    if (!isVerticalPitch) return pt;
     const cx = VB_X + VB_W / 2;
     const cy = VB_Y + VB_H / 2;
     // Content is drawn under `rotate(90 cx cy)`, which maps a content point
@@ -2381,7 +2419,7 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
       a.click();
       track.exportTactic({
         format: 'png', status: 'success', faces: facesOnBoard,
-        view: opts.vertical ? 'vertical' : 'horizontal',
+        view: isVerticalPitch ? 'vertical' : 'horizontal',
         ms: Math.round(performance.now() - startedAt),
       });
     } catch (err) {
@@ -2494,7 +2532,7 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
   const skin = opts.darkPitch ? PITCH_SKINS.dark : PITCH_SKINS.grass;
 
   /* ── Pitch render ────────────────────────────────────────── */
-  const renderPitch = (mode, label) => {
+  const renderPitch = (mode, label, fill = false) => {
     const positions = (currentPhase >= 0 && phases[currentPhase])
       ? phases[currentPhase]
       : Object.fromEntries(players.map(p => [p.id, p.pos[mode]]));
@@ -2523,16 +2561,19 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
     return (
       <svg
         ref={mode === possessionMode ? svgRef : null}
-        viewBox={opts.vertical ? verticalVB : horizontalVB}
+        viewBox={isVerticalPitch ? verticalVB : horizontalVB}
+        preserveAspectRatio="xMidYMid meet"
         className={
-          opts.vertical
+          fill
             ? 'select-none touch-none rounded-xl border border-ink/10 pitch-clip'
-            : 'w-full h-auto select-none touch-none rounded-xl border border-ink/10 pitch-clip'
+            : isVerticalPitch
+              ? 'select-none touch-none rounded-xl border border-ink/10 pitch-clip'
+              : 'w-full h-auto select-none touch-none rounded-xl border border-ink/10 pitch-clip'
         }
         style={{
           background: `radial-gradient(800px 400px at 50% 0%, rgba(215,255,60,0.10), transparent 70%), ${skin.deck}`,
           boxShadow: '0 30px 80px rgba(0,0,0,0.55), 0 0 60px rgba(215,255,60,0.08)',
-          ...(opts.vertical ? verticalSize : {}),
+          ...(fill ? {} : isVerticalPitch ? verticalSize : {}),
           cursor:
             tool === 'select' ? 'default' :
             tool === 'arrow'  ? 'crosshair' :
@@ -2606,10 +2647,10 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
           ))}
         </defs>
 
-        {/* All visible content lives inside this `<g>`. When `opts.vertical`
+        {/* All visible content lives inside this `<g>`. When vertical
             is true we rotate 90° clockwise around the center of the original
             viewBox; the swapped viewBox above keeps the result in frame. */}
-        <g transform={opts.vertical ? `rotate(90 ${cx} ${cy})` : undefined}>
+        <g transform={isVerticalPitch ? `rotate(90 ${cx} ${cy})` : undefined}>
         <rect x={VB_X} y={VB_Y} width={VB_W} height={VB_H} fill={skin.deck} />
         <rect x={VB_X + 4} y={VB_Y + 4} width={VB_W - 8} height={VB_H - 8}
           fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
@@ -2755,14 +2796,19 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
             </g>
         ))}
 
-        <g pointerEvents="none">
-          <rect x={20} y={PITCH_H - 50} width={240} height={32} rx={4}
-            fill="rgba(0,0,0,0.78)" stroke="rgba(215,255,60,0.42)" strokeWidth={1} />
-          <text x={32} y={PITCH_H - 28} fontSize={14} fontWeight={800} fill="#d7ff3c"
-            style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1.5px' }}>
-            {label}
-          </text>
-        </g>
+        {/* The touch shell already states possession in its nav, and this plate
+            rotates with the board — it reads as a black bar down the side of a
+            vertical pitch. Desktop keeps it. */}
+        {!fill && (
+          <g pointerEvents="none">
+            <rect x={20} y={PITCH_H - 50} width={240} height={32} rx={4}
+              fill="rgba(0,0,0,0.78)" stroke="rgba(215,255,60,0.42)" strokeWidth={1} />
+            <text x={32} y={PITCH_H - 28} fontSize={14} fontWeight={800} fill="#d7ff3c"
+              style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1.5px' }}>
+              {label}
+            </text>
+          </g>
+        )}
         </g>
       </svg>
     );
@@ -2778,6 +2824,425 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
   };
 
   const phaseSavedCount = phases.filter(Boolean).length;
+
+  /* ══════════════════════════════════════════════════════════════
+     TOUCH SHELL — phones & tablets
+     The board takes the whole screen; everything else collapses into
+     a compact nav, a thumb-reachable tool bar and sheets.
+     ══════════════════════════════════════════════════════════════ */
+  if (touchUI) {
+    const savedPhaseIdx = phases.map((p, i) => (p ? i : -1)).filter(i => i >= 0);
+
+    const IconBtn = ({ onClick, label, children, disabled, active, tone }) => (
+      <button onClick={onClick} disabled={disabled} aria-label={label} title={label}
+        className={`ios-tap flex items-center justify-center rounded-xl px-2 transition
+          ${active ? 'bg-accent text-acc-ink'
+                   : tone === 'danger' ? 'bg-rose-500/15 text-rose-300 active:bg-rose-500/30'
+                   : 'bg-ink/[0.07] text-mute active:bg-ink/15'}
+          disabled:opacity-30`}>
+        {children}
+      </button>
+    );
+
+    const Seg = ({ options, value, onChange, ariaLabel }) => (
+      <div className="ios-seg flex-none" role="group" aria-label={ariaLabel}>
+        {options.map(o => (
+          <button key={o.v} aria-pressed={value === o.v}
+            onClick={() => onChange(o.v)}
+            className="font-extrabold tracking-wide text-mute"
+            style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif',
+                     ...(value === o.v && o.bg ? { background: o.bg, color: o.fg } : {}) }}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    );
+
+    const controlStrip = (
+      <>
+        <Seg ariaLabel="Possession" value={possessionMode}
+          onChange={(v) => togglePossessionMode(v)}
+          options={[
+            { v: 'inPossession', label: 'IP' },
+            { v: 'outOfPossession', label: 'OOP' },
+          ]} />
+        <Seg ariaLabel="Teams shown" value={editingTeam}
+          onChange={(v) => { setEditingTeam(v); track.teamFilter(v); }}
+          options={[
+            { v: 'home', label: 'H',    bg: kitPal.home.base, fg: kitPal.home.ink },
+            { v: 'both', label: 'BOTH', bg: '#e2e8f0',        fg: '#0f172a' },
+            { v: 'away', label: 'A',    bg: kitPal.away.base, fg: kitPal.away.ink },
+          ]} />
+        <select value={activePreset} onChange={(e) => loadPreset(e.target.value)}
+          aria-label="Formation"
+          className="flex-none bg-ink/[0.10] border-0 rounded-[9px] px-2 py-1.5 font-extrabold text-ink"
+          style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', fontSize: 12 }}>
+          {FORMATION_KEYS.map(k => <option key={k} value={k} className="bg-s1">{k}</option>)}
+        </select>
+        <Seg ariaLabel="View mode" value={viewMode}
+          onChange={(v) => { setViewMode(v); track.viewMode(v); }}
+          options={[{ v: '2d', label: '2D' }, { v: '3d', label: '3D' }]} />
+        <button
+          onClick={() => setOrientLock(isVerticalPitch ? 'h' : 'v')}
+          aria-label="Rotate pitch"
+          title={`Pitch is ${isVerticalPitch ? 'upright' : 'flat'} — tap to rotate`}
+          className="ios-tap flex-none flex items-center justify-center rounded-[9px]
+                     px-2 bg-ink/[0.10] text-mute active:bg-ink/20">
+          <span className="text-[14px] leading-none">{isVerticalPitch ? '⇕' : '⇔'}</span>
+        </button>
+      </>
+    );
+
+    return (
+      <div className="ios-shell app-shell text-ink"
+        style={{ fontFamily: '"Space Grotesk", Inter, system-ui, sans-serif' }}>
+
+        {/* ── NAV ─────────────────────────────────────────────── */}
+        <header className="ios-nav ios-safe-t ios-safe-x">
+          <div className="flex items-center gap-1.5 px-2.5 h-11">
+            <input
+              value={tacticName}
+              onChange={(e) => setTacticName(e.target.value)}
+              placeholder="Tactic name…"
+              aria-label="Tactic name"
+              className={`min-w-0 bg-transparent border-0 outline-none text-ink
+                          font-extrabold truncate placeholder-dim ${wideNav ? 'w-40 flex-none' : 'flex-1'}`}
+              style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '0.4px', fontSize: 16 }}
+            />
+            {/* Wide screens keep everything on one row — on a landscape iPad
+                that second row is board area you can't get back. */}
+            {wideNav && (
+              <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto"
+                style={{ scrollbarWidth: 'none' }}>
+                {controlStrip}
+              </div>
+            )}
+            <IconBtn onClick={undo} label="Undo"><span className="text-[17px] leading-none">↶</span></IconBtn>
+            <IconBtn onClick={redo} label="Redo"><span className="text-[17px] leading-none">↷</span></IconBtn>
+            <IconBtn onClick={() => setSheet('more')} label="More actions" active={sheet === 'more'}>
+              <span className="text-[17px] leading-none tracking-tight">•••</span>
+            </IconBtn>
+          </div>
+
+          {!wideNav && (
+            <div className="flex items-center gap-1.5 px-2.5 pb-1.5 overflow-x-auto"
+              style={{ scrollbarWidth: 'none' }}>
+              {controlStrip}
+            </div>
+          )}
+        </header>
+
+        {/* ── STAGE ───────────────────────────────────────────── */}
+        <div className="ios-stage ios-safe-x">
+          {viewMode === '3d' ? (
+            <ErrorBoundary>
+              <Suspense fallback={
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="w-9 h-9 mx-auto mb-3 border-2 border-ink/10 border-t-accent rounded-full animate-spin" />
+                    <div className="text-[10px] tracking-[0.4em] text-accent font-display">LOADING 3D</div>
+                  </div>
+                </div>
+              }>
+                <Pitch3D
+                  tactics={tacticsApi} players={players}
+                  displayedPositions={displayedPositions} ballPos={displayedBall}
+                  selectedPlayer={selectedPlayer} playerMode={opts.playerMode}
+                  tool={tool} arrowColor={arrowColor} drawings={live}
+                  drawingArrow={drawingArrow} drawingZone={drawingZone}
+                  customStadium={opts.customStadium} animating={animating} kits={kits}
+                />
+              </Suspense>
+            </ErrorBoundary>
+          ) : (
+            renderPitch(possessionMode,
+              possessionMode === 'inPossession' ? 'IN POSSESSION' : 'OUT OF POSSESSION',
+              true)
+          )}
+
+          {/* formation chip */}
+          <div className="absolute top-1.5 left-3 pointer-events-none flex items-center gap-1.5">
+            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black tracking-widest
+                              backdrop-blur bg-black/45 ${possessionMode === 'inPossession' ? 'text-accent' : 'text-rose-300'}`}
+              style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+              {formationLabel || '—'}
+            </span>
+            {currentPhase >= 0 && (
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-black tracking-widest
+                               bg-accent text-acc-ink"
+                style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+                P{currentPhase + 1}
+              </span>
+            )}
+          </div>
+
+          {/* phase transport — floating, thumb-reachable */}
+          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex items-center gap-1
+                          rounded-full bg-black/55 backdrop-blur px-1 py-1">
+            <IconBtn onClick={() => stepPhase(-1)} disabled={!phaseSavedCount} label="Previous phase">
+              <span className="text-[13px] leading-none">⏮</span>
+            </IconBtn>
+            <button
+              onClick={playing ? handlePause : handlePlay}
+              disabled={phaseSavedCount < 2}
+              aria-label={playing ? 'Pause' : 'Play phases'}
+              className={`ios-tap px-4 rounded-full font-black text-[12px] tracking-widest transition
+                ${playing ? 'bg-rose-500 text-white' : 'bg-accent text-acc-ink'} disabled:opacity-30`}
+              style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+              {playing ? '❚❚' : '▶'}
+            </button>
+            <IconBtn onClick={() => stepPhase(1)} disabled={!phaseSavedCount} label="Next phase">
+              <span className="text-[13px] leading-none">⏭</span>
+            </IconBtn>
+            <button onClick={() => setSheet('phases')}
+              aria-label="Phases"
+              className="ios-tap px-2.5 rounded-full text-[11px] font-black text-mute active:text-ink"
+              style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+              {savedPhaseIdx.length ? `${savedPhaseIdx.length}▮` : 'PHASES'}
+            </button>
+          </div>
+        </div>
+
+        {/* ── SELECTED PLAYER CARD ────────────────────────────── */}
+        {sel && (
+          <button onClick={() => setSheet('player')}
+            className="flex items-center gap-2.5 px-3 py-2 bg-s2 border-t border-ink/10 text-left active:bg-ink/[0.06]">
+            <span className="w-9 h-9 rounded-full flex-none flex items-center justify-center
+                             text-[12px] font-black overflow-hidden relative"
+              style={{ background: kitPal[sel.team].base, color: kitPal[sel.team].ink,
+                       fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+              {sel.face
+                ? <img src={faceUrl(sel.face.id)} alt="" className="absolute inset-0 w-full h-auto"
+                    style={{ objectFit: 'cover', objectPosition: 'top' }} />
+                : sel.label}
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[13px] font-extrabold text-ink truncate"
+                style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+                {sel.name?.trim() || (sel.face ? sel.face.fullName : `Player ${sel.label}`)}
+              </span>
+              <span className="block text-[10px] text-mute truncate">
+                {sel.team === 'home' ? 'HOME' : 'AWAY'} · {sel.label}
+                {selectedIds.length > 1 ? ` · ${selectedIds.length} selected` : ''}
+              </span>
+            </span>
+            <span className="text-mute text-[15px] flex-none pr-1">›</span>
+          </button>
+        )}
+
+        {/* ── TAB BAR ─────────────────────────────────────────── */}
+        <nav className="ios-tabbar ios-safe-b ios-safe-x">
+          <div className="flex items-center gap-1 px-2 py-1.5 overflow-x-auto"
+            style={{ scrollbarWidth: 'none' }}>
+            {[
+              ['select', '✥', 'Select'],
+              ['arrow',  '➤', 'Arrow'],
+              ['shape',  '▭', 'Box'],
+              ['zone',   '▱', 'Zone'],
+              ['text',   'T', 'Text'],
+              ['press',  '!', 'Press'],
+              ['eraser', '⌫', 'Eraser'],
+            ].map(([t, icon, label]) => (
+              <button key={t}
+                onClick={() => { setTool(t); track.selectTool(t); }}
+                aria-label={label} aria-pressed={tool === t}
+                className={`ios-tap flex-none flex flex-col items-center justify-center gap-0.5 rounded-xl px-2.5 transition
+                  ${tool === t ? 'bg-accent/20 text-accent' : 'text-mute active:bg-ink/10'}`}>
+                <span className="text-[16px] leading-none">{icon}</span>
+                <span className="text-[8.5px] font-black tracking-wider"
+                  style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>{label}</span>
+              </button>
+            ))}
+
+            <span className="flex-none w-px h-7 bg-ink/10 mx-0.5" />
+
+            <button onClick={() => setSheet('ink')} aria-label="Ink colour and line style"
+              className="ios-tap flex-none flex items-center gap-1.5 rounded-xl px-2.5 active:bg-ink/10">
+              <span className="w-5 h-5 rounded-full border-2 border-ink/25 flex-none"
+                style={{ background: ARROW_COLORS[arrowColor] }} />
+              <span className="text-[8.5px] font-black tracking-wider text-mute"
+                style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+                {arrowStyle === 'dashed' ? 'PASS' : 'RUN'}
+              </span>
+            </button>
+
+            <button onClick={clearOverlays} aria-label="Clear drawings"
+              className="ios-tap flex-none flex items-center justify-center rounded-xl px-2.5
+                         text-[9px] font-black tracking-wider text-rose-300 active:bg-rose-500/20"
+              style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+              CLR
+            </button>
+          </div>
+        </nav>
+
+        {/* ── SHEETS ──────────────────────────────────────────── */}
+        <Sheet open={sheet === 'more'} onClose={closeSheet}
+          title="Board" subtitle="Actions & settings">
+          <div className="grid grid-cols-2 gap-2 pb-4">
+            {[
+              ['⇩', exporting ? 'Exporting…' : 'Export PNG', () => { exportPNG(); closeSheet(); }, exporting],
+              ['☰', 'Saved tactics', () => { closeSheet(); setShowTacticMgmt(true); }],
+              ['👁', 'Display settings', () => { closeSheet(); setShowDisplayOpts(true); }],
+              ['⇄', 'Mirror', () => { mirrorTactic(); closeSheet(); }],
+              ['⚖', 'Balance symmetry', () => { balanceSymmetry(); closeSheet(); }],
+              ['▦', 'Desktop layout', () => { setUiMode('desktop'); closeSheet(); }],
+            ].map(([icon, label, fn, disabled]) => (
+              <button key={label} onClick={fn} disabled={disabled}
+                className="ios-tap flex flex-col items-start gap-1 rounded-xl bg-ink/[0.05]
+                           border border-ink/10 px-3 py-3 active:bg-ink/10 disabled:opacity-40">
+                <span className="text-[17px] leading-none text-accent">{icon}</span>
+                <span className="text-[12px] font-extrabold text-ink"
+                  style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>{label}</span>
+              </button>
+            ))}
+          </div>
+          {guest && exitGuest && (
+            <button onClick={() => { closeSheet(); exitGuest(); }}
+              className="w-full ios-tap rounded-xl bg-accent/10 border border-accent/35 text-accent
+                         text-[13px] font-extrabold mb-4"
+              style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+              Sign in
+            </button>
+          )}
+          {profile && (
+            <button onClick={() => { closeSheet(); track.logout('mobile_sheet'); identify(null); signOut(); }}
+              className="w-full ios-tap rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300
+                         text-[13px] font-extrabold mb-4"
+              style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+              Sign out @{profile.username}
+            </button>
+          )}
+        </Sheet>
+
+        <Sheet open={sheet === 'ink'} onClose={closeSheet}
+          title="Ink" subtitle="Colour & line style">
+          <div className="grid grid-cols-7 gap-2 pb-3">
+            {ARROW_COLOR_KEYS.map(c => (
+              <button key={c} onClick={() => setArrowColor(c)} aria-label={c}
+                className={`h-11 rounded-xl border-2 transition ${
+                  arrowColor === c ? 'border-accent scale-105' : 'border-ink/15'}`}
+                style={{ background: ARROW_COLORS[c] }} />
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2 pb-4">
+            {[['solid', 'RUN', 'Solid — player runs'], ['dashed', 'PASS', 'Dashed — passes']].map(([v, label, desc]) => (
+              <button key={v} onClick={() => setArrowStyle(v)}
+                className={`ios-tap rounded-xl border px-3 py-2.5 text-left transition ${
+                  arrowStyle === v ? 'bg-accent/15 border-accent/50' : 'bg-ink/[0.04] border-ink/10'}`}>
+                <div className="text-[13px] font-extrabold text-ink"
+                  style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>{label}</div>
+                <div className="text-[10px] text-mute">{desc}</div>
+              </button>
+            ))}
+          </div>
+        </Sheet>
+
+        <Sheet open={sheet === 'phases'} onClose={closeSheet}
+          title="Phases" subtitle="Snapshot the shape, then play it through">
+          <div className="flex flex-wrap gap-2 pb-3">
+            {phases.map((ph, i) => (
+              <button key={i}
+                onClick={() => { goToPhase(i); closeSheet(); }}
+                className={`ios-tap min-w-[52px] rounded-xl border text-[13px] font-black transition ${
+                  currentPhase === i ? 'bg-accent text-acc-ink border-accent'
+                    : ph ? 'bg-accent/15 border-accent/40 text-accent'
+                         : 'bg-ink/5 border-ink/10 text-dim'}`}
+                style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+                {i + 1}
+              </button>
+            ))}
+            {phases[phases.length - 1] && (
+              <button onClick={addPhaseSlot}
+                className="ios-tap min-w-[52px] rounded-xl border border-dashed border-accent/40 text-accent text-[15px] font-black">
+                +
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-2 pb-4">
+            <button
+              onClick={() => { savePhase(currentPhase >= 0 ? currentPhase : (phases.findIndex(p => !p) === -1 ? 0 : phases.findIndex(p => !p))); closeSheet(); }}
+              className="ios-tap rounded-xl bg-accent text-acc-ink text-[13px] font-extrabold"
+              style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+              Save phase
+            </button>
+            {currentPhase >= 0 ? (
+              <button onClick={() => { clearPhase(currentPhase); closeSheet(); }}
+                className="ios-tap rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[13px] font-extrabold"
+                style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+                Clear phase
+              </button>
+            ) : <span />}
+          </div>
+        </Sheet>
+
+        <Sheet open={sheet === 'player' && !!sel} onClose={closeSheet} detent="tall"
+          title={sel ? (sel.name?.trim() || (sel.face ? sel.face.fullName : `Player ${sel.label}`)) : ''}
+          subtitle={sel ? `${sel.team === 'home' ? 'Home' : 'Away'} · #${sel.number}` : ''}>
+          {sel && (
+            <div className="pb-4 space-y-3">
+              <input
+                value={sel.name || ''}
+                onFocus={pushHistory}
+                onChange={(e) => patchSelected({ name: e.target.value.slice(0, 24) })}
+                onBlur={(e) => { if (e.target.value.trim()) track.playerNamed({ has_face: !!sel.face }); }}
+                placeholder={sel.face ? sel.face.name : 'Add a name…'}
+                className="w-full bg-well/50 border border-ink/10 rounded-xl px-3 py-2.5 text-ink"
+                style={{ fontSize: 16 }} />
+
+              <div>
+                <div className="text-[10px] font-extrabold text-accent tracking-[0.25em] mb-1.5"
+                  style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>POSITION</div>
+                <PositionGrid current={sel.label} onPick={handlePositionPick} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-[10px] text-mute font-mono tracking-widest mb-1">
+                    SPEED <span className="text-accent">{sel.speed}</span>
+                  </div>
+                  <input type="range" min={1} max={10} value={sel.speed}
+                    onChange={(e) => updateSelected({ speed: +e.target.value })}
+                    className="w-full accent-accent" />
+                </div>
+                <div>
+                  <div className="text-[10px] text-mute font-mono tracking-widest mb-1">
+                    PRESS <span className="text-rose-300">{sel.press}</span>
+                  </div>
+                  <input type="range" min={1} max={10} value={sel.press}
+                    onChange={(e) => updateSelected({ press: +e.target.value })}
+                    className="w-full accent-rose-500" />
+                </div>
+              </div>
+
+              {opts.playerMode ? (
+                <FacePickerPanel targetPlayer={sel} takenIds={takenFaceIds}
+                  onPick={handleFacePick} onClear={handleFaceClear} />
+              ) : (
+                <button onClick={() => setOpts(o => ({ ...o, playerMode: true }))}
+                  className="w-full ios-tap rounded-xl bg-accent/10 border border-accent/30 text-accent
+                             text-[12px] font-extrabold tracking-wider"
+                  style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif' }}>
+                  ENABLE PLAYER MODE → ASSIGN A REAL FACE
+                </button>
+              )}
+            </div>
+          )}
+        </Sheet>
+
+        <DisplayOptionsModal
+          open={showDisplayOpts} onClose={() => setShowDisplayOpts(false)}
+          opts={opts} setOpts={setOpts}
+          theme={theme} setTheme={chooseTheme}
+          kits={kits} setKits={setKits}
+        />
+        <TacticManagementModal
+          open={showTacticMgmt} onClose={() => setShowTacticMgmt(false)}
+          current={{ name: tacticName, data: collectTacticData() }}
+          onLoad={restoreTacticData}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen w-full text-ink flex flex-col app-shell"
@@ -2883,6 +3348,15 @@ function TacticsBuilder({ session, profile, signOut, guest, exitGuest }) {
         </button>
 
         <div className="ml-auto flex items-center gap-1.5">
+          {/* An iPad on a Magic Keyboard reports a fine pointer and lands here,
+              so the touch shell has to be reachable by choice, not only by
+              detection. */}
+          <button onClick={() => setUiMode('touch')}
+            title="Switch to the touch layout (full-screen board, tool bar, sheets)"
+            className="px-2.5 py-1.5 text-[11px] font-extrabold bg-accent/10 hover:bg-accent/20 border border-accent/35 text-accent rounded transition"
+            style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>
+            ▢ TOUCH LAYOUT
+          </button>
           <button onClick={() => setShowDisplayOpts(true)}
             className="px-2.5 py-1.5 text-[11px] font-extrabold bg-ink/5 hover:bg-ink/10 border border-ink/10 rounded transition"
             style={{ fontFamily: '"Uni Sans Heavy", Oswald, sans-serif', letterSpacing: '1px' }}>

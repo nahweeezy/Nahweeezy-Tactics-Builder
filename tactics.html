@@ -2,7 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Installed to the Home Screen this runs without Safari's chrome, so the
+         layout must own the full viewport including the notch and home
+         indicator. viewport-fit=cover opts into the safe-area env() values;
+         user-scalable=no stops a double-tap zoom fighting the drag surface. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+    <meta name="theme-color" content="#0b0d08">
+    <meta name="color-scheme" content="dark light">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="apple-touch-icon" href="./assets/app/icon-180.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Tactics">
     <title>Nahweeezy's Tactics Board</title>
     <meta name="description" content="A creative tactical sandbox — dual possession shapes, phase animations, drawing tools, ad boards & a Premier League player picker.">
 

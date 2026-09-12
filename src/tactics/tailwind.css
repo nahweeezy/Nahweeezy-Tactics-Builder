@@ -227,6 +227,135 @@ html[data-theme="light"] .app-shell::after { opacity: 0.035; }
   background: linear-gradient(135deg, transparent 50%, var(--accent) 50%);
 }
 
+/* ══════════════════════════════════════════════════════════════
+   iOS / touch shell
+   Layout for phones and tablets: the board owns the screen, chrome
+   collapses to a compact nav on top and a thumb-reachable tab bar
+   at the bottom, and panels arrive as sheets.
+   ══════════════════════════════════════════════════════════════ */
+.ios-shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  /* dvh tracks Safari's collapsing address bar; vh would leave a gap. */
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+@supports not (height: 100dvh) { .ios-shell { height: 100vh; } }
+
+.ios-shell button,
+.ios-shell [role='button'] { -webkit-tap-highlight-color: transparent; }
+
+/* The notch, the dynamic island and the home indicator. */
+.ios-safe-t { padding-top: env(safe-area-inset-top, 0px); }
+.ios-safe-b { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.ios-safe-x {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.ios-nav {
+  flex: 0 0 auto;
+  background: rgb(var(--s1-rgb) / 0.86);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid rgb(var(--ink-rgb) / 0.08);
+}
+
+/* The board gets every pixel left over. */
+.ios-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+/* Fit the pitch to the stage in BOTH axes — the desktop board is width-led,
+   which on a short landscape screen would run off the bottom. */
+.ios-stage > svg {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.ios-tabbar {
+  flex: 0 0 auto;
+  background: rgb(var(--s1-rgb) / 0.92);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-top: 1px solid rgb(var(--ink-rgb) / 0.08);
+}
+/* Apple's 44pt minimum — anything less is a miss-tap generator. */
+.ios-tap { min-width: 44px; min-height: 44px; }
+
+/* Sheets ─────────────────────────────────────────────────────── */
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+.ios-sheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 60;
+  background: rgb(var(--s2-rgb));
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -18px 60px rgba(0,0,0,0.55);
+  max-height: 88dvh;
+  display: flex;
+  flex-direction: column;
+  animation: sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+@supports not (max-height: 88dvh) { .ios-sheet { max-height: 88vh; } }
+.ios-sheet-grabber {
+  width: 36px; height: 5px; border-radius: 999px;
+  background: rgb(var(--ink-rgb) / 0.22);
+  margin: 8px auto 4px;
+  flex: 0 0 auto;
+}
+.ios-sheet-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* iOS segmented control */
+.ios-seg {
+  display: inline-flex;
+  background: rgb(var(--ink-rgb) / 0.10);
+  border-radius: 9px;
+  padding: 2px;
+  gap: 2px;
+}
+.ios-seg > button {
+  border-radius: 7px;
+  padding: 5px 11px;
+  font-size: 12px;
+  line-height: 1.1;
+  transition: background 0.18s, color 0.18s;
+  white-space: nowrap;
+}
+.ios-seg > button[aria-pressed='true'] {
+  background: rgb(var(--accent-rgb));
+  color: rgb(var(--acc-ink-rgb));
+}
+
+/* iOS auto-zooms any input under 16px on focus, which would wreck the
+   layout mid-edit. */
+@media (pointer: coarse) {
+  .ios-shell input,
+  .ios-shell select,
+  .ios-shell textarea { font-size: 16px; }
+}
+
 /* Toggle switch — pair with a `sr-only` checkbox directly before it. */
 .tgl {
   position: relative; display: inline-block;

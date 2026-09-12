@@ -1,0 +1,16 @@
+{
+  "name": "Nahweeezy's Tactics Board",
+  "short_name": "Tactics",
+  "description": "A coaching board built in the browser — shapes, phases, freehand arrows and real player faces.",
+  "start_url": "./tactics.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0d08",
+  "theme_color": "#0b0d08",
+  "icons": [
+    { "src": "./assets/app/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./assets/app/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./assets/app/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
